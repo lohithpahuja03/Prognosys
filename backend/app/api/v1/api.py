@@ -9,6 +9,9 @@ from app.api.v1.endpoints import (
     risk,
     events,
     topology,
+    investigator,
+    simulation,
+    evaluation,
 )
 
 api_router = APIRouter()
@@ -22,3 +25,6 @@ api_router.include_router(anomaly.router, prefix="/anomalies", tags=["Anomaly De
 api_router.include_router(risk.router, prefix="/risk", tags=["Capacity Risk Intelligence"])
 api_router.include_router(events.router, prefix="/events", tags=["Operational Context & Events"])
 api_router.include_router(topology.router, prefix="/topology", tags=["Service Dependency Topology"])
+api_router.include_router(investigator.router, prefix="/investigator", tags=["AI Investigator"])
+api_router.include_router(simulation.router, prefix="/simulation", tags=["What-if Response Simulator"])
+api_router.include_router(evaluation.router, prefix="/evaluation", tags=["Model Evaluation Lab"])

@@ -465,3 +465,129 @@ export async function fetchServiceTopology(): Promise<ServiceTopologyResponse> {
   }
   return res.json();
 }
+
+// Phase 7: AI Investigator & What-If Simulator Schemas
+export interface EvidencePoint {
+  category: string;
+  statement: string;
+  severity: string;
+  timestamp?: string | null;
+}
+
+export interface InvestigationReport {
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  risk_state: string;
+  risk_score: number;
+  current_value: number;
+  time_to_breach_display: string;
+  investigated_at: string;
+  synthesizer_mode: string;
+  executive_summary: string;
+  timeline_summary: string[];
+  evidence_ledger: EvidencePoint[];
+  investigative_leads: string[];
+  recommended_runbook_actions: string[];
+  cautionary_notice: string;
+}
+
+export interface SimulationRequest {
+  metric_id: number;
+  action_type: string;
+  parameter_value: number;
+  current_replicas?: number;
+}
+
+export interface ProjectedMitigationPoint {
+  step_minutes: number;
+  baseline_predicted_value: number;
+  mitigated_predicted_value: number;
+}
+
+export interface SimulationResponse {
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  action_type: string;
+  parameter_value: number;
+  baseline_risk_state: string;
+  projected_risk_state: string;
+  baseline_risk_score: number;
+  projected_risk_score: number;
+  baseline_time_to_breach: string;
+  projected_time_to_breach: string;
+  impact_delta_percentage: number;
+  simulated_trajectory: ProjectedMitigationPoint[];
+  assumptions_and_limits: string[];
+  simulated_at: string;
+  is_read_only: boolean;
+}
+
+export async function runInvestigation(metricId: number, lookbackMinutes = 120): Promise<InvestigationReport> {
+  const res = await fetch(`${API_BASE_URL}/investigator/investigate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metric_id: metricId, lookback_minutes: lookbackMinutes }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Investigation failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function runSimulation(req: SimulationRequest): Promise<SimulationResponse> {
+  const res = await fetch(`${API_BASE_URL}/simulation/simulate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Simulation failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// Phase 8: Model Evaluation Lab Schemas
+export interface ModelMetricScore {
+  model_name: string;
+  mae: number;
+  rmse: number;
+  forecast_bias: number;
+  mape?: number | null;
+  outperformed_baseline: boolean;
+  improvement_vs_baseline_pct: number;
+}
+
+export interface EvaluationBenchmarkResponse {
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  unit: string;
+  total_observations_analyzed: number;
+  training_points_count: number;
+  test_points_count: number;
+  split_strategy: string;
+  benchmark_scores: ModelMetricScore[];
+  winning_model: string;
+  evaluation_summary: string;
+  evaluated_at: string;
+}
+
+export async function runEvaluationBenchmark(
+  metricId: number,
+  testSplitRatio = 0.25
+): Promise<EvaluationBenchmarkResponse> {
+  const res = await fetch(`${API_BASE_URL}/evaluation/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metric_id: metricId, test_split_ratio: testSplitRatio }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Evaluation benchmark failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}

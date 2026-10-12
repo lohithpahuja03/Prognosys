@@ -27,6 +27,10 @@ import {
   Network,
   History,
   Sparkles,
+  Sliders,
+  Scale,
+  FlaskConical,
+  BookOpen,
 } from "lucide-react";
 import {
   checkBackendConnection,
@@ -55,9 +59,20 @@ import {
   OperationalEventResponse,
   EventCorrelationResponse,
   ServiceTopologyResponse,
+  runInvestigation,
+  runSimulation,
+  runEvaluationBenchmark,
+  InvestigationReport,
+  SimulationResponse,
+  EvaluationBenchmarkResponse,
 } from "@/lib/api";
 
+type TabType = "overview" | "predictive" | "context" | "investigator" | "evaluation" | "telemetry";
+
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<TabType>("overview");
+
+  // Health & diagnostics
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [latency, setLatency] = useState<number>(0);
@@ -106,6 +121,18 @@ export default function Home() {
   const [eventSeverity, setEventSeverity] = useState<string>("info");
   const [loggingEvent, setLoggingEvent] = useState<boolean>(false);
   const [eventSuccess, setEventSuccess] = useState<string | null>(null);
+
+  // Phase 7: AI Investigator & What-If State
+  const [investigationReport, setInvestigationReport] = useState<InvestigationReport | null>(null);
+  const [investigating, setInvestigating] = useState<boolean>(false);
+  const [simAction, setSimAction] = useState<string>("scale_replicas");
+  const [simParam, setSimParam] = useState<number>(2.0);
+  const [simulating, setSimulating] = useState<boolean>(false);
+  const [simulationResult, setSimulationResult] = useState<SimulationResponse | null>(null);
+
+  // Phase 8: Model Evaluation State
+  const [evaluating, setEvaluating] = useState<boolean>(false);
+  const [evalReport, setEvalReport] = useState<EvaluationBenchmarkResponse | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +225,67 @@ export default function Home() {
       setError(err.message || "Failed to log event");
     }
     setLoggingEvent(false);
+  };
+
+  const handleAssessRisk = async () => {
+    if (!selectedMetricId) return;
+    setAssessingRisk(true);
+    setError(null);
+    try {
+      const res = await assessRisk({
+        metric_id: selectedMetricId,
+        horizon_minutes: Number(horizonMinutes),
+        model_type: forecastModel,
+      });
+      setRiskAssessment(res);
+      loadRiskOverviewData();
+    } catch (err: any) {
+      setError(err.message || "Risk assessment evaluation failed");
+    }
+    setAssessingRisk(false);
+  };
+
+  const handleInvestigation = async () => {
+    if (!selectedMetricId) return;
+    setInvestigating(true);
+    setError(null);
+    try {
+      const rep = await runInvestigation(selectedMetricId, 120);
+      setInvestigationReport(rep);
+    } catch (err: any) {
+      setError(err.message || "AI Investigation failed");
+    }
+    setInvestigating(false);
+  };
+
+  const handleSimulation = async () => {
+    if (!selectedMetricId) return;
+    setSimulating(true);
+    setError(null);
+    try {
+      const sim = await runSimulation({
+        metric_id: selectedMetricId,
+        action_type: simAction,
+        parameter_value: Number(simParam),
+      });
+      setSimulationResult(sim);
+    } catch (err: any) {
+      setError(err.message || "Simulation failed");
+    }
+    setSimulating(false);
+  };
+
+  const handleEvaluationBenchmark = async () => {
+    if (!selectedMetricId) return;
+    setEvaluating(true);
+    setError(null);
+    try {
+      const ev = await runEvaluationBenchmark(selectedMetricId, 0.25);
+      setEvalReport(ev);
+    } catch (err: any) {
+      setError(err.message || "Evaluation benchmark failed");
+    }
+    setEvaluating(false);
   };
 
   useEffect(() => {
@@ -300,24 +388,6 @@ export default function Home() {
     setDetectingAnomalies(false);
   };
 
-  const handleAssessRisk = async () => {
-    if (!selectedMetricId) return;
-    setAssessingRisk(true);
-    setError(null);
-    try {
-      const res = await assessRisk({
-        metric_id: selectedMetricId,
-        horizon_minutes: Number(horizonMinutes),
-        model_type: forecastModel,
-      });
-      setRiskAssessment(res);
-      loadRiskOverviewData();
-    } catch (err: any) {
-      setError(err.message || "Risk assessment evaluation failed");
-    }
-    setAssessingRisk(false);
-  };
-
   useEffect(() => {
     loadData();
   }, []);
@@ -347,7 +417,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
       {/* Top Navigation */}
-      <header className="border-b border-slate-800/80 bg-[#070b14]/80 backdrop-blur-md sticky top-0 z-50">
+      <header className="border-b border-slate-800/80 bg-[#070b14]/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
@@ -357,7 +427,7 @@ export default function Home() {
               <span className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
                 Prognosys<span className="text-cyan-400">AI</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono">
-                  v0.4.0-risk-intel
+                  v1.0.0-enterprise
                 </span>
               </span>
             </div>
@@ -416,617 +486,355 @@ export default function Home() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl mx-auto px-6 py-10 w-full space-y-10">
-        {/* Hero Section */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-gradient-to-b from-slate-900/90 via-[#0c1220]/80 to-[#070b14] p-8 md:p-12 shadow-2xl">
-          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      <main className="flex-1 max-w-7xl mx-auto px-6 py-8 w-full space-y-8">
+        {/* Navigation Tabs Bar */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-3">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "overview"
+                ? "bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <Gauge className="h-4 w-4" />
+            Capacity Risk Command
+          </button>
 
-          <div className="relative z-10 max-w-3xl space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-medium text-cyan-300">
-              <Gauge className="h-3.5 w-3.5" />
-              Phase 4: Capacity Risk Intelligence & Time-to-Breach Estimation
-            </div>
-            <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Predict Capacity Breaches{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-                Before Critical Incidents Occur.
-              </span>
-            </h1>
-            <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-              Synthesizing multi-horizon time-series trajectories against configured warning,
-              critical, and hard capacity thresholds. Compute continuous risk scores and
-              deterministic time-to-breach estimations with zero hallucination.
-            </p>
+          <button
+            onClick={() => setActiveTab("predictive")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "predictive"
+                ? "bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <LineChart className="h-4 w-4" />
+            Forecasting & Anomaly Lab
+          </button>
 
-            <div className="pt-2 flex flex-wrap items-center gap-4">
-              <a
-                href="#risk-intelligence"
-                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition text-xs"
+          <button
+            onClick={() => setActiveTab("context")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "context"
+                ? "bg-indigo-500/10 border border-indigo-500/40 text-indigo-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <GitCommit className="h-4 w-4" />
+            Operational Context & Topology
+          </button>
+
+          <button
+            onClick={() => setActiveTab("investigator")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "investigator"
+                ? "bg-purple-500/10 border border-purple-500/40 text-purple-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            AI Investigator & What-If
+          </button>
+
+          <button
+            onClick={() => setActiveTab("evaluation")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "evaluation"
+                ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <FlaskConical className="h-4 w-4" />
+            Model Evaluation Lab
+          </button>
+
+          <button
+            onClick={() => setActiveTab("telemetry")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition ${
+              activeTab === "telemetry"
+                ? "bg-blue-500/10 border border-blue-500/40 text-blue-300 shadow-sm"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
+            }`}
+          >
+            <Database className="h-4 w-4" />
+            Telemetry & Scenarios
+          </button>
+        </div>
+
+        {/* Global Metric & Service Target Selector */}
+        <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">Active Service</label>
+              <select
+                value={selectedServiceId || ""}
+                onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
               >
-                <Gauge className="h-4 w-4" />
-                View Risk Intelligence Hub
-              </a>
-              <a
-                href="#forecast-explorer"
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition text-xs"
-              >
-                Forecast Explorer
-                <ArrowRight className="h-4 w-4" />
-              </a>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.tier})
+                  </option>
+                ))}
+                {services.length === 0 && <option value="">No services registered</option>}
+              </select>
             </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400 font-medium">Target Metric</label>
+              <select
+                value={selectedMetricId || ""}
+                onChange={(e) => setSelectedMetricId(Number(e.target.value))}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              >
+                {metrics.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.unit})
+                  </option>
+                ))}
+                {metrics.length === 0 && <option value="">No metrics found</option>}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAssessRisk}
+              disabled={assessingRisk || !selectedMetricId}
+              className="flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50"
+            >
+              <Gauge className={`h-3.5 w-3.5 ${assessingRisk ? "animate-spin" : ""}`} />
+              Re-Assess Risk
+            </button>
+            <button
+              onClick={loadData}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
           </div>
         </div>
 
-        {/* Phase 4: Capacity Risk Intelligence Hub */}
-        <section id="risk-intelligence" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                <Gauge className="h-5 w-5 text-cyan-400" />
-                System Risk Intelligence Overview
-              </h2>
-              <p className="text-xs text-slate-400">
-                Aggregate capacity risk classification and deterministic time-to-breach projection across infrastructure
-              </p>
-            </div>
-            <button
-              onClick={loadRiskOverviewData}
-              disabled={loadingRiskOverview}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg transition"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loadingRiskOverview ? "animate-spin" : ""}`} />
-              Refresh Overview
-            </button>
-          </div>
-
-          {/* 4 Risk Counters */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-rose-900/40 backdrop-blur-sm">
-              <div className="flex items-center justify-between text-xs text-rose-400 font-medium">
-                <span>CRITICAL</span>
-                <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-              </div>
-              <div className="text-2xl font-bold font-mono text-rose-300 mt-2">
-                {riskOverview?.critical_count ?? 0}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1">Breach &lt; 30m or active</div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-amber-900/40 backdrop-blur-sm">
-              <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
-                <span>ELEVATED</span>
-                <span className="h-2 w-2 rounded-full bg-amber-500" />
-              </div>
-              <div className="text-2xl font-bold font-mono text-amber-300 mt-2">
-                {riskOverview?.elevated_count ?? 0}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1">Breach projected 30-60m</div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-yellow-900/40 backdrop-blur-sm">
-              <div className="flex items-center justify-between text-xs text-yellow-400 font-medium">
-                <span>WATCH</span>
-                <span className="h-2 w-2 rounded-full bg-yellow-500" />
-              </div>
-              <div className="text-2xl font-bold font-mono text-yellow-300 mt-2">
-                {riskOverview?.watch_count ?? 0}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1">Upper interval touches threshold</div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-emerald-900/40 backdrop-blur-sm">
-              <div className="flex items-center justify-between text-xs text-emerald-400 font-medium">
-                <span>NORMAL</span>
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              </div>
-              <div className="text-2xl font-bold font-mono text-emerald-300 mt-2">
-                {riskOverview?.normal_count ?? 0}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1">Healthy operating range</div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 backdrop-blur-sm col-span-2 lg:col-span-1">
-              <div className="text-xs text-slate-400 font-medium">TOTAL MONITORED</div>
-              <div className="text-2xl font-bold font-mono text-slate-200 mt-2">
-                {riskOverview?.total_metrics_evaluated ?? 0}
-              </div>
-              <div className="text-[10px] text-slate-500 mt-1">
-                {riskOverview?.insufficient_data_count ?? 0} insufficient data
-              </div>
-            </div>
-          </div>
-
-          {/* Detailed Metric Risk Card & Assessment Trigger */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Metric Risk Evaluation Card */}
-            <div className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-800">
-                <div className="space-y-0.5">
-                  <div className="text-xs text-slate-400">Current Evaluation Target</div>
-                  <div className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Server className="h-4 w-4 text-cyan-400" />
-                    {metrics.find((m) => m.id === selectedMetricId)?.name || "Select a Metric"}
-                    <span className="text-xs text-slate-400 font-normal">
-                      ({services.find((s) => s.id === selectedServiceId)?.name || "Service"})
-                    </span>
-                  </div>
+        {/* TAB 1: OVERVIEW & CAPACITY RISK */}
+        {activeTab === "overview" && (
+          <div className="space-y-8">
+            {/* 4 Risk Counters */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-rose-900/40 backdrop-blur-sm">
+                <div className="flex items-center justify-between text-xs text-rose-400 font-medium">
+                  <span>CRITICAL</span>
+                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
                 </div>
-
-                <button
-                  onClick={handleAssessRisk}
-                  disabled={assessingRisk || !selectedMetricId}
-                  className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-4 py-2 rounded-lg shadow-lg shadow-cyan-500/25 transition disabled:opacity-50 text-xs"
-                >
-                  <Gauge className={`h-4 w-4 ${assessingRisk ? "animate-spin" : ""}`} />
-                  {assessingRisk ? "Evaluating Risk..." : "Assess Capacity Risk"}
-                </button>
+                <div className="text-2xl font-bold font-mono text-rose-300 mt-2">
+                  {riskOverview?.critical_count ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">Breach &lt; 30m or active</div>
               </div>
 
-              {riskAssessment ? (
-                <div className="space-y-6">
-                  {/* Time to Breach Banner */}
-                  <div
-                    className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${getRiskBadgeClasses(
-                      riskAssessment.risk_state
-                    )}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Clock className="h-6 w-6 flex-shrink-0" />
-                      <div>
-                        <div className="text-xs uppercase tracking-wider font-mono font-semibold">
-                          Estimated Time To Breach
-                        </div>
-                        <div className="text-lg font-bold">
-                          {riskAssessment.time_to_breach_display}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono px-3 py-1 rounded-full border bg-slate-950/80 font-semibold uppercase">
-                        State: {riskAssessment.risk_state}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Multi-Factor Risk Score Gauge */}
-                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400 font-medium">Multi-Factor Capacity Risk Score</span>
-                      <span className="font-mono text-sm font-bold text-white">
-                        {riskAssessment.risk_score} / 100
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${getRiskScoreBarColor(
-                          riskAssessment.risk_score
-                        )}`}
-                        style={{ width: `${Math.min(100, Math.max(5, riskAssessment.risk_score))}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                      <span>0 (NORMAL)</span>
-                      <span>30 (WATCH)</span>
-                      <span>60 (ELEVATED)</span>
-                      <span>80-100 (CRITICAL)</span>
-                    </div>
-                  </div>
-
-                  {/* Threshold Indicators */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="text-slate-500 text-[10px]">CURRENT VALUE</div>
-                      <div className="text-base font-bold text-white font-mono mt-0.5">
-                        {riskAssessment.current_value} {riskAssessment.unit}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="text-slate-500 text-[10px]">WARNING LIMIT</div>
-                      <div className="text-base font-bold text-yellow-400 font-mono mt-0.5">
-                        {riskAssessment.warning_threshold ?? 80.0} {riskAssessment.unit}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="text-slate-500 text-[10px]">CRITICAL LIMIT</div>
-                      <div className="text-base font-bold text-rose-400 font-mono mt-0.5">
-                        {riskAssessment.critical_threshold ?? 90.0} {riskAssessment.unit}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="text-slate-500 text-[10px]">CAPACITY LIMIT</div>
-                      <div className="text-base font-bold text-slate-300 font-mono mt-0.5">
-                        {riskAssessment.capacity_limit ?? 100.0} {riskAssessment.unit}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Deterministic Explanation */}
-                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
-                    <div className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-cyan-400" />
-                      Engineering Assessment Rationale
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed font-mono">
-                      {riskAssessment.explanation}
-                    </p>
-                    <div className="pt-2 text-[10px] text-slate-500 flex items-center justify-between">
-                      <span>Evaluated: {new Date(riskAssessment.assessed_at).toLocaleTimeString()}</span>
-                      <span>Confidence: {riskAssessment.confidence.toUpperCase()}</span>
-                    </div>
-                  </div>
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-amber-900/40 backdrop-blur-sm">
+                <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
+                  <span>ELEVATED</span>
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
                 </div>
-              ) : (
-                <div className="p-8 rounded-xl bg-slate-950/40 border border-dashed border-slate-800 text-center space-y-3">
-                  <Gauge className="h-8 w-8 text-slate-600 mx-auto" />
-                  <div className="text-xs text-slate-400">
-                    No risk evaluation performed yet for this metric.
-                  </div>
-                  <button
-                    onClick={handleAssessRisk}
-                    disabled={assessingRisk || !selectedMetricId}
-                    className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
-                  >
-                    Run Capacity Risk Evaluation Now &rarr;
-                  </button>
+                <div className="text-2xl font-bold font-mono text-amber-300 mt-2">
+                  {riskOverview?.elevated_count ?? 0}
                 </div>
-              )}
+                <div className="text-[10px] text-slate-500 mt-1">Breach projected 30-60m</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-yellow-900/40 backdrop-blur-sm">
+                <div className="flex items-center justify-between text-xs text-yellow-400 font-medium">
+                  <span>WATCH</span>
+                  <span className="h-2 w-2 rounded-full bg-yellow-500" />
+                </div>
+                <div className="text-2xl font-bold font-mono text-yellow-300 mt-2">
+                  {riskOverview?.watch_count ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">Upper interval touches limit</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-emerald-900/40 backdrop-blur-sm">
+                <div className="flex items-center justify-between text-xs text-emerald-400 font-medium">
+                  <span>NORMAL</span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                </div>
+                <div className="text-2xl font-bold font-mono text-emerald-300 mt-2">
+                  {riskOverview?.normal_count ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">Safe operating headroom</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 backdrop-blur-sm col-span-2 lg:col-span-1">
+                <div className="text-xs text-slate-400 font-medium">TOTAL EVALUATED</div>
+                <div className="text-2xl font-bold font-mono text-slate-200 mt-2">
+                  {riskOverview?.total_metrics_evaluated ?? 0}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  {riskOverview?.insufficient_data_count ?? 0} insufficient data
+                </div>
+              </div>
             </div>
 
-            {/* Top At-Risk Metrics Table */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <span className="text-sm font-semibold text-white flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-rose-400" />
-                  Top Risk Infrastructure
-                </span>
-                <span className="text-[10px] font-mono text-slate-500">SORTED BY SCORE</span>
-              </div>
-
-              {riskOverview && riskOverview.highest_risk_items.length > 0 ? (
-                <div className="space-y-2.5">
-                  {riskOverview.highest_risk_items.slice(0, 6).map((item) => (
-                    <div
-                      key={item.metric_id}
-                      onClick={() => setSelectedMetricId(item.metric_id)}
-                      className={`p-3 rounded-lg border text-xs cursor-pointer hover:border-slate-600 transition space-y-1.5 ${
-                        item.metric_id === selectedMetricId
-                          ? "bg-slate-800/80 border-cyan-500/80"
-                          : "bg-slate-950/60 border-slate-800"
-                      }`}
+            {/* Detailed Metric Risk Card & Top At-Risk Table */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                  <span className="font-semibold text-sm text-white flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-cyan-400" />
+                    Capacity Risk Evaluation: {metrics.find((m) => m.id === selectedMetricId)?.name}
+                  </span>
+                  {riskAssessment && (
+                    <span
+                      className={`text-xs font-mono px-2.5 py-0.5 rounded-full border ${getRiskBadgeClasses(
+                        riskAssessment.risk_state
+                      )}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white">
-                          {item.service_name} • {item.metric_name}
-                        </span>
-                        <span
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${getRiskBadgeClasses(
-                            item.risk_state
-                          )}`}
-                        >
-                          {item.risk_state}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                        <span>Current: {item.current_value} {item.unit}</span>
-                        <span className="text-slate-300 font-semibold">{item.time_to_breach_display}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-6 text-center text-xs text-slate-500">
-                  No risk intelligence data recorded yet. Ingest telemetry and evaluate capacity risks.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Phase 5: Operational Context & Service Topology */}
-        <section id="operational-context" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                <GitCommit className="h-5 w-5 text-indigo-400" />
-                Operational Context & Service Topology
-              </h2>
-              <p className="text-xs text-slate-400">
-                Correlate software deployments and infrastructure events with metric inflection points.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-800 text-indigo-300">
-                Phase 5 Active
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: Event Logger & Live Event Timeline */}
-            <div className="space-y-6">
-              {/* Event Logger Form */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="text-sm font-semibold text-white flex items-center gap-2">
-                    <History className="h-4 w-4 text-indigo-400" />
-                    Log Operational Event
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">TEMPORAL CONTEXT</span>
+                      {riskAssessment.risk_state}
+                    </span>
+                  )}
                 </div>
 
-                <form onSubmit={handleLogEvent} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-400 font-medium">Event Title</label>
-                    <input
-                      type="text"
-                      value={eventTitle}
-                      onChange={(e) => setEventTitle(e.target.value)}
-                      placeholder="e.g. Release v2.14.0 canary rollout"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Event Type</label>
-                      <select
-                        value={eventType}
-                        onChange={(e) => setEventType(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-                      >
-                        <option value="deployment">Deployment</option>
-                        <option value="config_change">Configuration Change</option>
-                        <option value="restart">Service Restart</option>
-                        <option value="scale_event">Autoscaling Event</option>
-                        <option value="incident">Incident / Outage</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-400 font-medium">Severity</label>
-                      <select
-                        value={eventSeverity}
-                        onChange={(e) => setEventSeverity(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-                      >
-                        <option value="info">Info</option>
-                        <option value="warning">Warning</option>
-                        <option value="critical">Critical</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loggingEvent}
-                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs shadow-lg shadow-indigo-600/20"
-                  >
-                    <GitCommit className={`h-3.5 w-3.5 ${loggingEvent ? "animate-spin" : ""}`} />
-                    {loggingEvent ? "Logging Event..." : "Record Operational Event"}
-                  </button>
-                </form>
-
-                {eventSuccess && (
-                  <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 flex items-center gap-2 text-emerald-300 text-xs">
-                    <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                    <span>{eventSuccess}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Recent Events Feed */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="text-sm font-semibold text-white flex items-center gap-2">
-                    <History className="h-4 w-4 text-slate-400" />
-                    Recent Operational Timeline
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">{events.length} EVENTS</span>
-                </div>
-
-                {events.length > 0 ? (
-                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                    {events.slice(0, 5).map((ev) => (
-                      <div
-                        key={ev.id}
-                        className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs space-y-1"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-white flex items-center gap-2">
-                            <span
-                              className={`h-2 w-2 rounded-full ${
-                                ev.severity === "critical"
-                                  ? "bg-rose-500"
-                                  : ev.severity === "warning"
-                                  ? "bg-amber-500"
-                                  : "bg-indigo-400"
-                              }`}
-                            />
-                            {ev.title}
-                          </span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400 uppercase">
-                            {ev.event_type}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span>Target: {ev.service_name || "Infrastructure-Wide"}</span>
-                          <span>{new Date(ev.occurred_at).toLocaleTimeString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-6 text-center text-xs text-slate-500">
-                    No operational events logged yet. Record an event to observe temporal correlation.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Temporal Correlation Lead & Topology Graph */}
-            <div className="space-y-6">
-              {/* Temporal Correlation Card */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-cyan-400" />
-                    Temporal Metric Correlation
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    LOOKBACK: 120 MINS
-                  </span>
-                </div>
-
-                {/* Methodological Disclaimer */}
-                <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-800/40 text-[11px] text-indigo-300 leading-relaxed font-mono">
-                  {correlatedEvents?.methodology_disclaimer ||
-                    "Temporal proximity detects investigative leads, never assumed causation."}
-                </div>
-
-                {correlatedEvents && correlatedEvents.correlated_events.length > 0 ? (
-                  <div className="space-y-2.5 max-h-56 overflow-y-auto">
-                    {correlatedEvents.correlated_events.map((c) => (
-                      <div
-                        key={c.event_id}
-                        className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs space-y-1.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-white">{c.title}</span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
-                            Lead Score: {c.relevance_lead_score}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 font-mono">
-                          {c.relevance_note}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-6 text-center text-xs text-slate-500">
-                    No operational events detected within the 120-minute window of the selected metric.
-                  </div>
-                )}
-              </div>
-
-              {/* Service Dependency Topology */}
-              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Network className="h-4 w-4 text-emerald-400" />
-                    Service Dependency Topology
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    {topology?.nodes.length ?? 0} NODES • {topology?.edges.length ?? 0} EDGES
-                  </span>
-                </div>
-
-                {topology && topology.nodes.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                      {topology.nodes.map((n) => (
-                        <div
-                          key={n.id}
-                          className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs space-y-1"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-white truncate">{n.name}</span>
-                            <span
-                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${getRiskBadgeClasses(
-                                n.risk_state
-                              )}`}
-                            >
-                              {n.risk_state}
-                            </span>
+                {riskAssessment ? (
+                  <div className="space-y-6">
+                    <div
+                      className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${getRiskBadgeClasses(
+                        riskAssessment.risk_state
+                      )}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Clock className="h-6 w-6 flex-shrink-0" />
+                        <div>
+                          <div className="text-xs uppercase tracking-wider font-mono font-semibold">
+                            Projected Time to Threshold Breach
                           </div>
-                          <div className="text-[10px] text-slate-500 font-mono">Tier: {n.tier}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {topology.edges.length > 0 && (
-                      <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-                        <span className="text-[10px] text-slate-500 font-mono uppercase">
-                          Directed Downstream Links:
-                        </span>
-                        <div className="space-y-1 font-mono text-[11px]">
-                          {topology.edges.map((e) => {
-                            const srcNode = topology.nodes.find((x) => x.id === e.source)?.name || e.source;
-                            const tgtNode = topology.nodes.find((x) => x.id === e.target)?.name || e.target;
-                            return (
-                              <div key={e.id} className="flex items-center gap-1.5 text-slate-300">
-                                <span>{srcNode}</span>
-                                <span className="text-cyan-400">&rarr;</span>
-                                <span>{tgtNode}</span>
-                                <span className="text-slate-500 text-[10px]">({e.dependency_type})</span>
-                              </div>
-                            );
-                          })}
+                          <div className="text-lg font-bold">
+                            {riskAssessment.time_to_breach_display}
+                          </div>
                         </div>
                       </div>
-                    )}
+                      <span className="text-xs font-mono px-3 py-1 rounded-full border bg-slate-950/80 font-semibold uppercase">
+                        Breach Type: {riskAssessment.predicted_breach_type}
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Multi-Factor Capacity Risk Score</span>
+                        <span className="font-mono text-sm font-bold text-white">
+                          {riskAssessment.risk_score} / 100
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${getRiskScoreBarColor(
+                            riskAssessment.risk_score
+                          )}`}
+                          style={{ width: `${Math.min(100, Math.max(5, riskAssessment.risk_score))}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                        <div className="text-slate-500 text-[10px]">CURRENT VALUE</div>
+                        <div className="text-base font-bold text-white font-mono mt-0.5">
+                          {riskAssessment.current_value} {riskAssessment.unit}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                        <div className="text-slate-500 text-[10px]">WARNING LIMIT</div>
+                        <div className="text-base font-bold text-yellow-400 font-mono mt-0.5">
+                          {riskAssessment.warning_threshold ?? 80.0} {riskAssessment.unit}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                        <div className="text-slate-500 text-[10px]">CRITICAL LIMIT</div>
+                        <div className="text-base font-bold text-rose-400 font-mono mt-0.5">
+                          {riskAssessment.critical_threshold ?? 90.0} {riskAssessment.unit}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                        <div className="text-slate-500 text-[10px]">CAPACITY LIMIT</div>
+                        <div className="text-base font-bold text-slate-300 font-mono mt-0.5">
+                          {riskAssessment.capacity_limit ?? 100.0} {riskAssessment.unit}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                      <div className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4 text-cyan-400" />
+                        Engineering Assessment Rationale
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed font-mono">
+                        {riskAssessment.explanation}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-xs text-slate-500">
+                    No risk assessment recorded yet. Click 'Re-Assess Risk' above.
+                  </div>
+                )}
+              </div>
+
+              {/* Top Risk Table */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-sm font-semibold text-white flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-rose-400" />
+                    Top Risk Infrastructure
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">ORDERED BY SCORE</span>
+                </div>
+
+                {riskOverview && riskOverview.highest_risk_items.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {riskOverview.highest_risk_items.map((it) => (
+                      <div
+                        key={it.metric_id}
+                        onClick={() => setSelectedMetricId(it.metric_id)}
+                        className={`p-3 rounded-lg border text-xs cursor-pointer hover:border-slate-600 transition space-y-1.5 ${
+                          it.metric_id === selectedMetricId
+                            ? "bg-slate-800/80 border-cyan-500/80"
+                            : "bg-slate-950/60 border-slate-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-white">
+                            {it.service_name} • {it.metric_name}
+                          </span>
+                          <span
+                            className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${getRiskBadgeClasses(
+                              it.risk_state
+                            )}`}
+                          >
+                            {it.risk_state}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                          <span>Current: {it.current_value} {it.unit}</span>
+                          <span className="text-slate-300 font-semibold">{it.time_to_breach_display}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="p-6 text-center text-xs text-slate-500">
-                    Register services to construct upstream/downstream dependency map.
+                    No risk telemetry recorded. Ingest telemetry and evaluate metrics.
                   </div>
                 )}
               </div>
             </div>
           </div>
-        </section>
+        )}
 
-        {/* Phase 3: Interactive Predictive Forecast & Anomaly Explorer */}
-        <section id="forecast-explorer" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                <LineChart className="h-5 w-5 text-cyan-400" />
-                Predictive Forecasting & Anomaly Lab
-              </h2>
-              <p className="text-xs text-slate-400">
-                Execute mathematical forecasts and detect structural behavioral drift
-              </p>
-            </div>
-          </div>
-
+        {/* TAB 2: PREDICTIVE FORECASTING & ANOMALIES */}
+        {activeTab === "predictive" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
-            {/* Control Bar: Service, Metric, Horizon, Model selection */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-6 border-b border-slate-800">
-              <div className="space-y-1">
-                <label className="text-xs text-slate-400 font-medium">Select Service</label>
-                <select
-                  value={selectedServiceId || ""}
-                  onChange={(e) => setSelectedServiceId(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                >
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.tier})
-                    </option>
-                  ))}
-                  {services.length === 0 && <option value="">No services registered</option>}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs text-slate-400 font-medium">Select Metric</label>
-                <select
-                  value={selectedMetricId || ""}
-                  onChange={(e) => setSelectedMetricId(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                >
-                  {metrics.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.unit})
-                    </option>
-                  ))}
-                  {metrics.length === 0 && <option value="">No metrics found</option>}
-                </select>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4 border-b border-slate-800">
               <div className="space-y-1">
                 <label className="text-xs text-slate-400 font-medium">Forecast Horizon</label>
                 <select
@@ -1052,10 +860,21 @@ export default function Home() {
                   <option value="linear_trend">Linear Trend Regression (OLS)</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400 font-medium">Anomaly Detector</label>
+                <select
+                  value={anomalyModel}
+                  onChange={(e) => setAnomalyModel(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                >
+                  <option value="statistical_zscore">Rolling Statistical Z-Score</option>
+                  <option value="isolation_forest">Isolation Forest (Unsupervised)</option>
+                </select>
+              </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4">
               <button
                 onClick={handleForecast}
                 disabled={forecasting || !selectedMetricId}
@@ -1065,43 +884,26 @@ export default function Home() {
                 {forecasting ? "Computing Forecast..." : `Compute ${horizonMinutes}m Forecast`}
               </button>
 
-              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                <select
-                  value={anomalyModel}
-                  onChange={(e) => setAnomalyModel(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none"
-                >
-                  <option value="statistical_zscore">Statistical Z-Score (Rolling)</option>
-                  <option value="isolation_forest">Isolation Forest (Unsupervised)</option>
-                </select>
-
-                <button
-                  onClick={handleDetectAnomalies}
-                  disabled={detectingAnomalies || !selectedMetricId}
-                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs"
-                >
-                  <ShieldAlert className={`h-4 w-4 ${detectingAnomalies ? "animate-spin" : ""}`} />
-                  {detectingAnomalies ? "Detecting..." : "Run Anomaly Detection"}
-                </button>
-              </div>
+              <button
+                onClick={handleDetectAnomalies}
+                disabled={detectingAnomalies || !selectedMetricId}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs"
+              >
+                <ShieldAlert className={`h-4 w-4 ${detectingAnomalies ? "animate-spin" : ""}`} />
+                {detectingAnomalies ? "Detecting..." : "Run Anomaly Detection"}
+              </button>
             </div>
 
-            {/* Forecast Output Visualization / Cards */}
             {forecastResult && (
               <div className="space-y-4 pt-4 border-t border-slate-800">
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-white text-sm flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-cyan-400" />
-                      Model Forecast: {forecastResult.service_name} • {forecastResult.metric_name}
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-white text-sm">
+                      Model Summary: {forecastResult.model_name.toUpperCase()} (v{forecastResult.model_version})
                     </span>
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
-                      {forecastResult.model_name.toUpperCase()} (v{forecastResult.model_version})
-                    </span>
+                    <span className="text-xs text-slate-400 font-mono">{forecastResult.points.length} points</span>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed font-mono">
-                    {forecastResult.summary}
-                  </p>
+                  <p className="text-xs text-slate-300 font-mono">{forecastResult.summary}</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1112,27 +914,12 @@ export default function Home() {
                         ? `${forecastResult.historical_points[forecastResult.historical_points.length - 1].value} ${forecastResult.unit}`
                         : "—"}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      Based on {forecastResult.training_points_count} training points
-                    </div>
                   </div>
 
                   <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                    <div className="text-xs text-slate-400">
-                      Forecast at +{forecastResult.horizon_minutes}m
-                    </div>
+                    <div className="text-xs text-slate-400">Forecast at +{forecastResult.horizon_minutes}m</div>
                     <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">
                       {forecastResult.points[forecastResult.points.length - 1].predicted_value}{" "}
-                      {forecastResult.unit}
-                    </div>
-                    <div className="text-[10px] text-cyan-500/80 mt-1">
-                      Delta:{" "}
-                      {forecastResult.historical_points.length > 0
-                        ? (
-                            forecastResult.points[forecastResult.points.length - 1].predicted_value -
-                            forecastResult.historical_points[forecastResult.historical_points.length - 1].value
-                          ).toFixed(2)
-                        : "0"}{" "}
                       {forecastResult.unit}
                     </div>
                   </div>
@@ -1143,17 +930,11 @@ export default function Home() {
                       [{forecastResult.points[forecastResult.points.length - 1].lower_bound},{" "}
                       {forecastResult.points[forecastResult.points.length - 1].upper_bound}]
                     </div>
-                    <div className="text-[10px] text-indigo-400/80 mt-1">
-                      Statistical confidence interval
-                    </div>
                   </div>
                 </div>
 
-                {/* Trajectory Table Sample */}
+                {/* Trajectory Table */}
                 <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
-                  <div className="p-3 bg-slate-950/80 border-b border-slate-800 text-xs font-semibold text-slate-300">
-                    Projected Time-Series Trajectory Sample
-                  </div>
                   <div className="max-h-56 overflow-y-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/60 border-b border-slate-800/80 text-slate-400 font-mono text-[11px]">
@@ -1184,103 +965,387 @@ export default function Home() {
               </div>
             )}
 
-            {/* Anomaly Detection Output */}
             {anomalyResult && (
-              <div className="space-y-3 pt-4 border-t border-slate-800">
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="font-semibold text-white text-sm flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-amber-400" />
-                      Anomaly Analysis: {anomalyResult.anomalies_detected_count} Anomalies Detected
-                    </span>
-                    <p className="text-xs text-slate-400 mt-1">{anomalyResult.summary}</p>
-                  </div>
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
-                    Model: {anomalyResult.model_name}
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white text-sm flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-amber-400" />
+                    Detected Anomalies: {anomalyResult.anomalies_detected_count}
                   </span>
+                  <span className="text-xs font-mono text-slate-400">Model: {anomalyResult.model_name}</span>
                 </div>
-
-                {anomalyResult.anomalies_detected_count > 0 && (
-                  <div className="space-y-2">
-                    {anomalyResult.detections
-                      .filter((d) => d.is_anomaly)
-                      .slice(0, 5)
-                      .map((anom, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3 rounded-lg bg-amber-950/20 border border-amber-800/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                        >
-                          <div className="space-y-1">
-                            <span className="font-semibold text-amber-300 flex items-center gap-2">
-                              <span
-                                className={`h-2 w-2 rounded-full ${
-                                  anom.severity === "critical"
-                                    ? "bg-red-500"
-                                    : anom.severity === "high"
-                                    ? "bg-amber-500"
-                                    : "bg-yellow-500"
-                                }`}
-                              ></span>
-                              {new Date(anom.timestamp).toLocaleTimeString()} • Value:{" "}
-                              {anom.actual_value} (Expected: {anom.expected_value})
-                            </span>
-                            <p className="text-slate-400 text-[11px]">{anom.explanation}</p>
-                          </div>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 uppercase">
-                            Score: {anom.anomaly_score} ({anom.severity})
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                )}
+                <p className="text-xs text-slate-300 font-mono">{anomalyResult.summary}</p>
               </div>
             )}
           </div>
-        </section>
+        )}
 
-        {/* Telemetry Generator & Ingestion Section */}
-        <section id="telemetry-console" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                <Database className="h-5 w-5 text-cyan-400" />
-                Telemetry Ingestion & Synthetic Scenarios
-              </h2>
-              <p className="text-xs text-slate-400">
-                Generate reproducible operational scenarios or upload infrastructure CSV telemetry
-              </p>
+        {/* TAB 3: OPERATIONAL CONTEXT & TOPOLOGY */}
+        {activeTab === "context" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <span className="text-sm font-semibold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                  <History className="h-4 w-4 text-indigo-400" />
+                  Log Operational Event
+                </span>
+                <form onSubmit={handleLogEvent} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Event Title</label>
+                    <input
+                      type="text"
+                      value={eventTitle}
+                      onChange={(e) => setEventTitle(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-400 font-medium">Event Type</label>
+                      <select
+                        value={eventType}
+                        onChange={(e) => setEventType(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="deployment">Deployment</option>
+                        <option value="config_change">Configuration Change</option>
+                        <option value="restart">Service Restart</option>
+                        <option value="scale_event">Autoscaling Event</option>
+                        <option value="incident">Incident</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-400 font-medium">Severity</label>
+                      <select
+                        value={eventSeverity}
+                        onChange={(e) => setEventSeverity(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="info">Info</option>
+                        <option value="warning">Warning</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loggingEvent}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg text-xs transition disabled:opacity-50"
+                  >
+                    {loggingEvent ? "Logging..." : "Record Operational Event"}
+                  </button>
+                </form>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-3">
+                <span className="text-sm font-semibold text-white flex items-center gap-2 pb-2 border-b border-slate-800">
+                  <History className="h-4 w-4 text-slate-400" />
+                  Recent Operational Timeline
+                </span>
+                <div className="space-y-2 max-h-56 overflow-y-auto">
+                  {events.map((ev) => (
+                    <div key={ev.id} className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-white">
+                        <span>{ev.title}</span>
+                        <span className="text-[10px] font-mono uppercase text-slate-400">{ev.event_type}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1">
+                        {new Date(ev.occurred_at).toLocaleTimeString()} • {ev.service_name || "System"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <span className="text-sm font-semibold text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                  <Sparkles className="h-4 w-4 text-cyan-400" />
+                  Temporal Metric Correlation
+                </span>
+                <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-800/40 text-[11px] text-indigo-300 font-mono">
+                  {correlatedEvents?.methodology_disclaimer ||
+                    "Temporal proximity indicates an investigative lead, never assumed causation."}
+                </div>
+                <div className="space-y-2 max-h-56 overflow-y-auto">
+                  {correlatedEvents?.correlated_events.map((c) => (
+                    <div key={c.event_id} className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-white">
+                        <span>{c.title}</span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
+                          Lead Score: {c.relevance_lead_score}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-mono mt-1">{c.relevance_note}</p>
+                    </div>
+                  ))}
+                  {(!correlatedEvents || correlatedEvents.correlated_events.length === 0) && (
+                    <div className="text-xs text-slate-500 text-center p-4">No events found in lookback window.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-3">
+                <span className="text-sm font-semibold text-white flex items-center gap-2 pb-2 border-b border-slate-800">
+                  <Network className="h-4 w-4 text-emerald-400" />
+                  Service Dependency Topology
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {topology?.nodes.map((n) => (
+                    <div key={n.id} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                      <div className="font-semibold text-white truncate">{n.name}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">Tier: {n.tier}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
+        )}
 
+        {/* TAB 4: AI INVESTIGATOR & WHAT-IF SIMULATOR */}
+        {activeTab === "investigator" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Synthetic Telemetry Generator Form */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+            {/* Left: AI Investigator Report */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Play className="h-4 w-4 text-cyan-400" />
-                  <span className="font-semibold text-sm text-white">
-                    Deterministic Scenario Simulator
-                  </span>
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  AI Investigation Engine
+                </span>
+                <button
+                  onClick={handleInvestigation}
+                  disabled={investigating || !selectedMetricId}
+                  className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50"
+                >
+                  <Sparkles className={`h-3.5 w-3.5 ${investigating ? "animate-spin" : ""}`} />
+                  {investigating ? "Synthesizing..." : "Run AI Investigation"}
+                </button>
+              </div>
+
+              {investigationReport ? (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-white">Executive Incident Summary</span>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-purple-950 border border-purple-800 text-purple-300">
+                        {investigationReport.synthesizer_mode}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed font-mono">
+                      {investigationReport.executive_summary}
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-amber-950/20 border border-amber-800/40 text-[11px] text-amber-300 font-mono">
+                    {investigationReport.cautionary_notice}
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
+                      Recommended Runbook Actions:
+                    </span>
+                    <ul className="space-y-1.5 text-xs text-slate-300 font-mono list-disc pl-4">
+                      {investigationReport.recommended_runbook_actions.map((act, i) => (
+                        <li key={i}>{act}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
+                      Evidence Ledger ({investigationReport.evidence_ledger.length} items):
+                    </span>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {investigationReport.evidence_ledger.map((ev, i) => (
+                        <div key={i} className="p-2 rounded bg-slate-950 border border-slate-800 text-[11px] font-mono">
+                          <span className="text-cyan-400 uppercase font-semibold">[{ev.category}] </span>
+                          <span className="text-slate-300">{ev.statement}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-500">
+                  Run an AI Investigation to synthesize evidence ledger and recommended runbooks.
+                </div>
+              )}
+            </div>
+
+            {/* Right: What-if Response Simulator */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Sliders className="h-4 w-4 text-cyan-400" />
+                  What-if Response Simulator (Read-Only)
+                </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
-                  REPRODUCIBLE
+                  READ-ONLY
                 </span>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400 font-medium">Mitigation Action</label>
+                  <select
+                    value={simAction}
+                    onChange={(e) => setSimAction(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                  >
+                    <option value="scale_replicas">Scale Worker Replicas</option>
+                    <option value="traffic_shedding">Ingress Traffic Shedding (%)</option>
+                    <option value="pool_expansion">DB Pool Limit Expansion</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-400 font-medium">Parameter Value</label>
+                  <input
+                    type="number"
+                    value={simParam}
+                    onChange={(e) => setSimParam(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleSimulation}
+                disabled={simulating || !selectedMetricId}
+                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2 rounded-lg text-xs transition disabled:opacity-50"
+              >
+                {simulating ? "Projecting Hypothetical Trajectory..." : "Run What-If Scenario Projection"}
+              </button>
+
+              {simulationResult && (
+                <div className="space-y-4 pt-3 border-t border-slate-800">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                      <div className="text-[10px] text-slate-500 font-mono">BASELINE STATE</div>
+                      <div className="text-sm font-bold text-rose-400 font-mono mt-0.5">
+                        {simulationResult.baseline_risk_state} ({simulationResult.baseline_risk_score}/100)
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{simulationResult.baseline_time_to_breach}</div>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-slate-950 border border-emerald-900/40">
+                      <div className="text-[10px] text-emerald-400 font-mono">MITIGATED STATE</div>
+                      <div className="text-sm font-bold text-emerald-300 font-mono mt-0.5">
+                        {simulationResult.projected_risk_state} ({simulationResult.projected_risk_score}/100)
+                      </div>
+                      <div className="text-[10px] text-emerald-500 mt-0.5">-{simulationResult.impact_delta_percentage}% load</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-slate-300 font-mono">Underlying Assumptions:</span>
+                    <ul className="space-y-1 text-[11px] text-slate-400 font-mono list-disc pl-4">
+                      {simulationResult.assumptions_and_limits.map((asmp, i) => (
+                        <li key={i}>{asmp}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: MODEL EVALUATION LAB */}
+        {activeTab === "evaluation" && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4 text-emerald-400" />
+                  Model Evaluation Lab (Zero Temporal Data Leakage)
+                </span>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Chronological holdout cross-validation benchmarking candidate models against naive persistence.
+                </p>
+              </div>
+
+              <button
+                onClick={handleEvaluationBenchmark}
+                disabled={evaluating || !selectedMetricId}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-medium transition disabled:opacity-50"
+              >
+                <FlaskConical className={`h-3.5 w-3.5 ${evaluating ? "animate-spin" : ""}`} />
+                {evaluating ? "Benchmarking Models..." : "Run Holdout Evaluation Benchmark"}
+              </button>
+            </div>
+
+            {evalReport ? (
+              <div className="space-y-6">
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-white">Evaluation Summary</span>
+                    <span className="font-mono text-emerald-300 text-xs">
+                      Winning Model: {evalReport.winning_model.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-mono leading-relaxed">{evalReport.evaluation_summary}</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {evalReport.benchmark_scores.map((sc) => (
+                    <div
+                      key={sc.model_name}
+                      className={`p-4 rounded-xl border text-xs space-y-2 ${
+                        sc.model_name === evalReport.winning_model
+                          ? "bg-emerald-950/30 border-emerald-800/80"
+                          : "bg-slate-950/60 border-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-semibold text-white">
+                        <span>{sc.model_name.toUpperCase()}</span>
+                        {sc.outperformed_baseline && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300">
+                            +{sc.improvement_vs_baseline_pct}% BEATS BASELINE
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1 font-mono text-[11px] text-slate-400">
+                        <div>MAE: <span className="text-white font-bold">{sc.mae}</span></div>
+                        <div>RMSE: <span className="text-white">{sc.rmse}</span></div>
+                        <div>Forecast Bias: <span className="text-white">{sc.forecast_bias}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-xs text-slate-500">
+                Click 'Run Holdout Evaluation Benchmark' to measure empirical accuracy against the Persistence Baseline.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 6: TELEMETRY & SCENARIOS */}
+        {activeTab === "telemetry" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Synthetic Generator */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+              <span className="font-semibold text-sm text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                <Play className="h-4 w-4 text-cyan-400" />
+                Deterministic Scenario Simulator
+              </span>
               <form onSubmit={handleGenerate} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400 font-medium">Target Service</label>
+                    <label className="text-xs text-slate-400 font-medium">Service Name</label>
                     <input
                       type="text"
                       value={serviceName}
                       onChange={(e) => setServiceName(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                      placeholder="e.g. api-service"
                       required
                     />
                   </div>
-
                   <div className="space-y-1">
                     <label className="text-xs text-slate-400 font-medium">Scenario</label>
                     <select
@@ -1288,35 +1353,32 @@ export default function Home() {
                       onChange={(e) => setScenario(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
                     >
-                      <option value="memory_leak">Memory Leak (Gradual climb to 90%)</option>
-                      <option value="cpu_saturation">CPU Saturation (Surge to 95%)</option>
-                      <option value="traffic_spike">Traffic Spike (4x surge with latency)</option>
+                      <option value="memory_leak">Memory Leak</option>
+                      <option value="cpu_saturation">CPU Saturation</option>
+                      <option value="traffic_spike">Traffic Spike</option>
                       <option value="db_pressure">DB Pool Exhaustion</option>
-                      <option value="normal">Normal (Healthy baseline)</option>
+                      <option value="normal">Normal Baseline</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400 font-medium">Duration (Minutes)</label>
+                    <label className="text-xs text-slate-400 font-medium">Duration (Min)</label>
                     <input
                       type="number"
                       value={duration}
-                      min={15}
-                      max={720}
                       onChange={(e) => setDuration(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono"
                     />
                   </div>
-
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-400 font-medium">Random Seed</label>
+                    <label className="text-xs text-slate-400 font-medium">Seed</label>
                     <input
                       type="number"
                       value={seed}
                       onChange={(e) => setSeed(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono"
                     />
                   </div>
                 </div>
@@ -1324,173 +1386,106 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={generating}
-                  className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs shadow-lg shadow-cyan-600/20"
+                  className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2.5 rounded-lg text-xs transition disabled:opacity-50"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
-                  {generating ? "Generating Telemetry..." : "Generate Telemetry Dataset"}
+                  {generating ? "Generating..." : "Generate Scenario Telemetry"}
                 </button>
               </form>
 
               {genSuccess && (
-                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 flex items-center gap-2 text-emerald-300 text-xs">
-                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                  <span>{genSuccess}</span>
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 text-emerald-300 text-xs">
+                  {genSuccess}
                 </div>
               )}
             </div>
 
-            {/* CSV Telemetry Importer */}
+            {/* CSV Uploader */}
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-4 w-4 text-blue-400" />
-                  <span className="font-semibold text-sm text-white">
-                    Validated CSV Telemetry Upload
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300">
-                  STRICT VALIDATION
-                </span>
-              </div>
+              <span className="font-semibold text-sm text-white flex items-center gap-2 pb-3 border-b border-slate-800">
+                <FileSpreadsheet className="h-4 w-4 text-blue-400" />
+                Validated CSV Telemetry Upload
+              </span>
 
-              <div className="space-y-3 text-xs text-slate-400">
-                <p>Upload your historical or operational infrastructure time-series. Required columns:</p>
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-300">
-                  timestamp, service, metric, value, unit
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Validates percentage bounds [0, 100], ISO 8601 timestamps, duplicate records, and monotonic ordering.
-                </p>
-              </div>
-
-              <div>
+              <div className="text-xs text-slate-400 space-y-2">
+                <p>Required columns: timestamp, service, metric, value, unit</p>
                 <input
                   type="file"
                   accept=".csv"
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                   className="hidden"
-                  id="csv-file-input"
+                  id="csv-upload-input"
                 />
                 <label
-                  htmlFor="csv-file-input"
+                  htmlFor="csv-upload-input"
                   className="cursor-pointer border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center gap-2 bg-slate-950/40 hover:bg-slate-900/50 transition"
                 >
                   <Upload className={`h-6 w-6 text-slate-400 ${uploading ? "animate-bounce" : ""}`} />
                   <span className="text-xs font-medium text-slate-300">
-                    {uploading ? "Uploading & Validating..." : "Click to select CSV telemetry file"}
+                    {uploading ? "Validating & Uploading..." : "Click to select CSV telemetry file"}
                   </span>
-                  <span className="text-[10px] text-slate-500">Maximum file size: 10 MB</span>
                 </label>
               </div>
 
               {uploadSummary && (
-                <div
-                  className={`p-3.5 rounded-lg border text-xs space-y-1.5 ${
-                    uploadSummary.status === "success"
-                      ? "bg-emerald-950/30 border-emerald-800/50 text-emerald-300"
-                      : uploadSummary.status === "partial_success"
-                      ? "bg-amber-950/30 border-amber-800/50 text-amber-300"
-                      : "bg-red-950/30 border-red-800/50 text-red-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span>Import Status: {uploadSummary.status.toUpperCase()}</span>
-                    <span>
-                      {uploadSummary.valid_rows_imported} / {uploadSummary.total_rows_read} rows
-                    </span>
-                  </div>
-                  {uploadSummary.errors.length > 0 && (
-                    <div className="pt-1 text-[11px] opacity-90">
-                      Found {uploadSummary.error_count} validation errors. First error: row{" "}
-                      {uploadSummary.errors[0].row_number} - {uploadSummary.errors[0].message}
-                    </div>
-                  )}
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 text-emerald-300 text-xs">
+                  Imported {uploadSummary.valid_rows_imported} of {uploadSummary.total_rows_read} rows.
                 </div>
               )}
             </div>
           </div>
-        </section>
+        )}
 
         {/* Roadmap Milestones */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white uppercase tracking-wider font-mono flex items-center gap-2">
               <Zap className="h-4 w-4 text-cyan-400" />
-              Roadmap Status
+              Roadmap Status (All 10 Phases)
             </h3>
-            <span className="text-xs text-slate-400">Phase 4 Verification</span>
+            <span className="text-xs text-cyan-400 font-mono font-semibold">Phases 0 - 8 Complete</span>
           </div>
 
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-              <span className="flex items-center gap-2 text-emerald-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Phase 0 — Workspace & Architecture
-              </span>
-              <span className="font-mono text-emerald-400 uppercase font-semibold">
-                Completed
-              </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 0 — Workspace & Architecture
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-              <span className="flex items-center gap-2 text-emerald-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Phase 1 — Working Foundation (FastAPI & Next.js)
-              </span>
-              <span className="font-mono text-emerald-400 uppercase font-semibold">
-                Completed
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 1 — Working Foundation (FastAPI & Next.js)
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-              <span className="flex items-center gap-2 text-emerald-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Phase 2 — Telemetry Pipeline (Synthetic Generator & CSV Ingestion)
-              </span>
-              <span className="font-mono text-emerald-400 uppercase font-semibold">
-                Completed
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 2 — Telemetry Pipeline (Synthetic & CSV)
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-              <span className="flex items-center gap-2 text-emerald-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
-              </span>
-              <span className="font-mono text-emerald-400 uppercase font-semibold">
-                Completed
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 3 — Predictive Engine (Forecasts & Anomalies)
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-              <span className="flex items-center gap-2 text-emerald-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
-              </span>
-              <span className="font-mono text-emerald-400 uppercase font-semibold">
-                Completed
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 4 — Risk Intelligence (Time-to-Breach)
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
-              <span className="flex items-center gap-2 text-cyan-300 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                Phase 5 — Operational Context & Topology (Events & Correlations)
-              </span>
-              <span className="font-mono text-cyan-400 uppercase font-semibold">
-                Completed
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 5 — Operational Context & Topology
             </div>
-
-            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
-              <span className="flex items-center gap-2 text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-slate-600"></span>
-                Phase 6 — Incident Investigation & AI Copilot (Evidence Synthesis)
-              </span>
-              <span className="font-mono text-slate-500 uppercase">
-                Active
-              </span>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 6 — Frontend Command Centre (Enterprise Tabs)
+            </div>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 7 — AI Investigator & What-If Simulator
+            </div>
+            <div className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Phase 8 — Model Evaluation Lab (Backtesting)
+            </div>
+            <div className="p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40 text-cyan-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-cyan-400" />
+              Phase 9 & 10 — Hardening & Production Containerization
             </div>
           </div>
         </section>
@@ -1500,7 +1495,7 @@ export default function Home() {
       <footer className="border-t border-slate-800/80 bg-[#070b14] py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            PrognosysAI • AI-Powered Predictive Infrastructure Intelligence
+            PrognosysAI • Enterprise Predictive Infrastructure Intelligence Platform
           </div>
           <div className="font-mono text-[11px] text-slate-600">
             Strict Architecture Enforced • Zero LLM Number Fabrication
