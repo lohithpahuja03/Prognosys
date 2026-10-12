@@ -293,9 +293,12 @@ npm test
 
 ## 20. Current Limitations & Project Status
 
-- **Current Stage:** Phase 0 (Workspace & Architecture) complete.
-- **Runtime Foundations:** Core architecture, Git remote synchronization, and repository standards are established.
-- **Implementation:** Core backend and frontend services are planned across Phases 1 through 10. Refer to [ROADMAP.md](ROADMAP.md) for current phase progress and milestone tracking.
+- **Current Stage:** Phase 0 (Workspace & Architecture) and Phase 1 (Working Foundation) complete.
+- **Runtime Foundations:** 
+  - FastAPI backend operational with layered architecture (`core`, `api/v1`, `models`, `schemas`, `services`), CORS middleware, and dynamic health probes (`/api/v1/health`).
+  - Database connectivity active via SQLAlchemy 2.0 with PostgreSQL production readiness and automatic SQLite local development fallback. Initial database schema migration executed via Alembic.
+  - Next.js 16+ App Router frontend operational with TypeScript, Tailwind CSS, Lucide icons, and real-time backend contract verification.
+- **Implementation in Progress:** Ingestion pipeline, ML forecasting models, risk engines, and UI explorers are scheduled across Phases 2 through 10. Refer to [ROADMAP.md](ROADMAP.md) for milestone tracking.
 
 ---
 
