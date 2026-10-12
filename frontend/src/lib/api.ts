@@ -268,3 +268,83 @@ export async function detectAnomalies(req: AnomalyDetectionRequest): Promise<Ano
   }
   return res.json();
 }
+
+// Phase 4: Capacity Risk Intelligence Schemas
+export interface RiskAssessmentRequest {
+  metric_id: number;
+  horizon_minutes?: number;
+  model_type?: string;
+}
+
+export interface RiskAssessmentResponse {
+  id?: number | null;
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  unit: string;
+  risk_state: "CRITICAL" | "ELEVATED" | "WATCH" | "NORMAL" | "INSUFFICIENT_DATA";
+  risk_score: number;
+  current_value: number;
+  warning_threshold?: number | null;
+  critical_threshold?: number | null;
+  capacity_limit?: number | null;
+  predicted_breach_type: "none" | "warning" | "critical" | "capacity";
+  time_to_breach_minutes?: number | null;
+  time_to_breach_display: string;
+  confidence: string;
+  explanation: string;
+  assessed_at: string;
+  forecast_run_id?: number | null;
+}
+
+export interface RiskOverviewItem {
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  unit: string;
+  risk_state: string;
+  risk_score: number;
+  current_value: number;
+  time_to_breach_display: string;
+}
+
+export interface SystemRiskOverview {
+  critical_count: number;
+  elevated_count: number;
+  watch_count: number;
+  normal_count: number;
+  insufficient_data_count: number;
+  total_metrics_evaluated: number;
+  highest_risk_items: RiskOverviewItem[];
+  generated_at: string;
+}
+
+export async function assessRisk(req: RiskAssessmentRequest): Promise<RiskAssessmentResponse> {
+  const res = await fetch(`${API_BASE_URL}/risk/assess`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Risk assessment failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchLatestRisk(metricId: number): Promise<RiskAssessmentResponse | null> {
+  const res = await fetch(`${API_BASE_URL}/risk/latest/${metricId}`, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to fetch risk assessment: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchSystemRiskOverview(): Promise<SystemRiskOverview> {
+  const res = await fetch(`${API_BASE_URL}/risk/overview`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch system risk overview: HTTP ${res.status}`);
+  }
+  return res.json();
+}

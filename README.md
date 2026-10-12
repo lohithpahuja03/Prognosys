@@ -293,10 +293,10 @@ npm test
 
 ## 20. Current Limitations & Project Status
 
-- **Current Stage:** Phase 0 (Workspace & Architecture), Phase 1 (Working Foundation), Phase 2 (Telemetry Pipeline), and Phase 3 (Predictive Engine) complete.
+- **Current Stage:** Phase 0 (Workspace & Architecture), Phase 1 (Working Foundation), Phase 2 (Telemetry Pipeline), Phase 3 (Predictive Engine), and Phase 4 (Capacity Risk Intelligence) complete.
 - **Runtime Foundations:** 
   - FastAPI backend operational with layered architecture (`core`, `api/v1`, `models`, `schemas`, `services`), CORS middleware, and dynamic health probes (`/api/v1/health`).
-  - Database connectivity active via SQLAlchemy 2.0 with PostgreSQL production readiness and automatic SQLite local development fallback. Initial schema, telemetry, and predictive engine migrations executed via Alembic.
+  - Database connectivity active via SQLAlchemy 2.0 with PostgreSQL production readiness and automatic SQLite local development fallback. Initial schema, telemetry, predictive engine, and risk assessment migrations executed via Alembic.
   - Next.js 16+ App Router frontend operational with TypeScript, Tailwind CSS, Lucide icons, and real-time backend contract verification.
 - **Telemetry Pipeline Active:**
   - Relational time-series tables (`services`, `metric_definitions`, `metric_observations`) with compound indexing.
@@ -305,7 +305,11 @@ npm test
 - **Predictive Engine Active:**
   - Genuine multi-horizon forecasting models (Persistence baseline $y_{t+h} = y_t$, Double Exponential Smoothing / Holt Linear trend, Linear Trend regression) with calibrated 95% uncertainty intervals. Zero LLM number fabrication.
   - Time-series anomaly detectors (Rolling Statistical Z-Score filter and scikit-learn unsupervised Isolation Forest) with normalized scores ($0.0 - 1.0$) and severity classification.
-- **Implementation in Progress:** Capacity risk evaluation, time-to-breach projection, and operational state assignment (`NORMAL`, `WATCH`, `ELEVATED`, `CRITICAL`) are scheduled for Phase 4. Refer to [ROADMAP.md](ROADMAP.md) for milestone tracking.
+- **Risk Intelligence Active:**
+  - Multi-factor capacity risk score ($0.0 - 100.0$) and operational states (`NORMAL`, `WATCH`, `ELEVATED`, `CRITICAL`, `INSUFFICIENT_DATA`).
+  - Deterministic time-to-breach linear interpolation projection against warning and critical thresholds.
+  - System-wide risk aggregation endpoint (`/api/v1/risk/overview`) and frontend Risk Intelligence Hub with breach countdown clock and top at-risk infrastructure listing.
+- **Implementation in Progress:** Operational context integration (events, deployments, runbooks, logs) scheduled for Phase 5. Refer to [ROADMAP.md](ROADMAP.md) for milestone tracking.
 
 ---
 

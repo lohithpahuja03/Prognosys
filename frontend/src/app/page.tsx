@@ -7,10 +7,12 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Clock,
   Cpu,
   Database,
   ExternalLink,
   FileSpreadsheet,
+  Gauge,
   Layers,
   LineChart,
   Play,
@@ -37,6 +39,11 @@ import {
   ForecastResponse,
   detectAnomalies,
   AnomalyDetectionResponse,
+  assessRisk,
+  fetchLatestRisk,
+  fetchSystemRiskOverview,
+  RiskAssessmentResponse,
+  SystemRiskOverview,
 } from "@/lib/api";
 
 export default function Home() {
@@ -73,6 +80,12 @@ export default function Home() {
   const [detectingAnomalies, setDetectingAnomalies] = useState<boolean>(false);
   const [anomalyResult, setAnomalyResult] = useState<AnomalyDetectionResponse | null>(null);
 
+  // Phase 4: Risk Intelligence State
+  const [riskOverview, setRiskOverview] = useState<SystemRiskOverview | null>(null);
+  const [loadingRiskOverview, setLoadingRiskOverview] = useState<boolean>(false);
+  const [riskAssessment, setRiskAssessment] = useState<RiskAssessmentResponse | null>(null);
+  const [assessingRisk, setAssessingRisk] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
@@ -84,6 +97,7 @@ export default function Home() {
       setHealth(result.data);
       setLastChecked(new Date().toLocaleTimeString());
       loadServices();
+      loadRiskOverviewData();
     } else {
       setError(result.error || "Unable to reach FastAPI backend");
       setHealth(null);
@@ -105,6 +119,17 @@ export default function Home() {
     setLoadingServices(false);
   };
 
+  const loadRiskOverviewData = async () => {
+    setLoadingRiskOverview(true);
+    try {
+      const overview = await fetchSystemRiskOverview();
+      setRiskOverview(overview);
+    } catch {
+      // Backend may not have risk data yet
+    }
+    setLoadingRiskOverview(false);
+  };
+
   useEffect(() => {
     if (selectedServiceId) {
       fetchMetricsForService(selectedServiceId)
@@ -115,6 +140,16 @@ export default function Home() {
         .catch(() => {});
     }
   }, [selectedServiceId]);
+
+  useEffect(() => {
+    if (selectedMetricId) {
+      fetchLatestRisk(selectedMetricId)
+        .then((latest) => {
+          setRiskAssessment(latest);
+        })
+        .catch(() => {});
+    }
+  }, [selectedMetricId]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +168,7 @@ export default function Home() {
         `Generated ${res.observations_created} observations across ${res.metrics_generated.length} metrics for '${res.service_name}'.`
       );
       loadServices();
+      loadRiskOverviewData();
     } catch (err: any) {
       setError(err.message || "Failed to generate synthetic telemetry");
     }
@@ -149,6 +185,7 @@ export default function Home() {
       const summary = await uploadCSVTelemetry(file);
       setUploadSummary(summary);
       loadServices();
+      loadRiskOverviewData();
     } catch (err: any) {
       setError(err.message || "Failed to upload CSV file");
     }
@@ -192,9 +229,49 @@ export default function Home() {
     setDetectingAnomalies(false);
   };
 
+  const handleAssessRisk = async () => {
+    if (!selectedMetricId) return;
+    setAssessingRisk(true);
+    setError(null);
+    try {
+      const res = await assessRisk({
+        metric_id: selectedMetricId,
+        horizon_minutes: Number(horizonMinutes),
+        model_type: forecastModel,
+      });
+      setRiskAssessment(res);
+      loadRiskOverviewData();
+    } catch (err: any) {
+      setError(err.message || "Risk assessment evaluation failed");
+    }
+    setAssessingRisk(false);
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  const getRiskBadgeClasses = (state: string) => {
+    switch (state) {
+      case "CRITICAL":
+        return "bg-rose-950/80 border-rose-800 text-rose-300";
+      case "ELEVATED":
+        return "bg-amber-950/80 border-amber-800 text-amber-300";
+      case "WATCH":
+        return "bg-yellow-950/80 border-yellow-800 text-yellow-300";
+      case "NORMAL":
+        return "bg-emerald-950/80 border-emerald-800 text-emerald-300";
+      default:
+        return "bg-slate-900 border-slate-700 text-slate-400";
+    }
+  };
+
+  const getRiskScoreBarColor = (score: number) => {
+    if (score >= 80) return "bg-rose-500 shadow-rose-500/50";
+    if (score >= 60) return "bg-amber-500 shadow-amber-500/50";
+    if (score >= 30) return "bg-yellow-500 shadow-yellow-500/50";
+    return "bg-emerald-500 shadow-emerald-500/50";
+  };
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
@@ -209,7 +286,7 @@ export default function Home() {
               <span className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
                 Prognosys<span className="text-cyan-400">AI</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono">
-                  v0.3.0-predictive
+                  v0.4.0-risk-intel
                 </span>
               </span>
             </div>
@@ -276,40 +353,304 @@ export default function Home() {
 
           <div className="relative z-10 max-w-3xl space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-medium text-cyan-300">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Phase 3: Multi-Horizon Forecasting & Anomaly Engine
+              <Gauge className="h-3.5 w-3.5" />
+              Phase 4: Capacity Risk Intelligence & Time-to-Breach Estimation
             </div>
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Predict What May Happen Next{" "}
+              Predict Capacity Breaches{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-                With Mathematical Rigor.
+                Before Critical Incidents Occur.
               </span>
             </h1>
             <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-              Generate genuine 15, 30, and 60-minute time-series projections with
-              calibrated prediction intervals. Zero LLM number fabrication. Compare
-              persistence baselines against statistical exponential smoothing and
-              unsupervised Isolation Forests.
+              Synthesizing multi-horizon time-series trajectories against configured warning,
+              critical, and hard capacity thresholds. Compute continuous risk scores and
+              deterministic time-to-breach estimations with zero hallucination.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <a
-                href="#forecast-explorer"
-                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition"
+                href="#risk-intelligence"
+                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition text-xs"
               >
-                <TrendingUp className="h-4 w-4" />
-                Open Forecast Explorer
+                <Gauge className="h-4 w-4" />
+                View Risk Intelligence Hub
               </a>
               <a
-                href="#telemetry-console"
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition"
+                href="#forecast-explorer"
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition text-xs"
               >
-                Ingest Telemetry First
+                Forecast Explorer
                 <ArrowRight className="h-4 w-4" />
               </a>
             </div>
           </div>
         </div>
+
+        {/* Phase 4: Capacity Risk Intelligence Hub */}
+        <section id="risk-intelligence" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
+                <Gauge className="h-5 w-5 text-cyan-400" />
+                System Risk Intelligence Overview
+              </h2>
+              <p className="text-xs text-slate-400">
+                Aggregate capacity risk classification and deterministic time-to-breach projection across infrastructure
+              </p>
+            </div>
+            <button
+              onClick={loadRiskOverviewData}
+              disabled={loadingRiskOverview}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg transition"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingRiskOverview ? "animate-spin" : ""}`} />
+              Refresh Overview
+            </button>
+          </div>
+
+          {/* 4 Risk Counters */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-rose-900/40 backdrop-blur-sm">
+              <div className="flex items-center justify-between text-xs text-rose-400 font-medium">
+                <span>CRITICAL</span>
+                <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              </div>
+              <div className="text-2xl font-bold font-mono text-rose-300 mt-2">
+                {riskOverview?.critical_count ?? 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Breach &lt; 30m or active</div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-amber-900/40 backdrop-blur-sm">
+              <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
+                <span>ELEVATED</span>
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+              </div>
+              <div className="text-2xl font-bold font-mono text-amber-300 mt-2">
+                {riskOverview?.elevated_count ?? 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Breach projected 30-60m</div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-yellow-900/40 backdrop-blur-sm">
+              <div className="flex items-center justify-between text-xs text-yellow-400 font-medium">
+                <span>WATCH</span>
+                <span className="h-2 w-2 rounded-full bg-yellow-500" />
+              </div>
+              <div className="text-2xl font-bold font-mono text-yellow-300 mt-2">
+                {riskOverview?.watch_count ?? 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Upper interval touches threshold</div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-emerald-900/40 backdrop-blur-sm">
+              <div className="flex items-center justify-between text-xs text-emerald-400 font-medium">
+                <span>NORMAL</span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              </div>
+              <div className="text-2xl font-bold font-mono text-emerald-300 mt-2">
+                {riskOverview?.normal_count ?? 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Healthy operating range</div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 backdrop-blur-sm col-span-2 lg:col-span-1">
+              <div className="text-xs text-slate-400 font-medium">TOTAL MONITORED</div>
+              <div className="text-2xl font-bold font-mono text-slate-200 mt-2">
+                {riskOverview?.total_metrics_evaluated ?? 0}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {riskOverview?.insufficient_data_count ?? 0} insufficient data
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Metric Risk Card & Assessment Trigger */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Metric Risk Evaluation Card */}
+            <div className="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-800">
+                <div className="space-y-0.5">
+                  <div className="text-xs text-slate-400">Current Evaluation Target</div>
+                  <div className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Server className="h-4 w-4 text-cyan-400" />
+                    {metrics.find((m) => m.id === selectedMetricId)?.name || "Select a Metric"}
+                    <span className="text-xs text-slate-400 font-normal">
+                      ({services.find((s) => s.id === selectedServiceId)?.name || "Service"})
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAssessRisk}
+                  disabled={assessingRisk || !selectedMetricId}
+                  className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-4 py-2 rounded-lg shadow-lg shadow-cyan-500/25 transition disabled:opacity-50 text-xs"
+                >
+                  <Gauge className={`h-4 w-4 ${assessingRisk ? "animate-spin" : ""}`} />
+                  {assessingRisk ? "Evaluating Risk..." : "Assess Capacity Risk"}
+                </button>
+              </div>
+
+              {riskAssessment ? (
+                <div className="space-y-6">
+                  {/* Time to Breach Banner */}
+                  <div
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${getRiskBadgeClasses(
+                      riskAssessment.risk_state
+                    )}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-6 w-6 flex-shrink-0" />
+                      <div>
+                        <div className="text-xs uppercase tracking-wider font-mono font-semibold">
+                          Estimated Time To Breach
+                        </div>
+                        <div className="text-lg font-bold">
+                          {riskAssessment.time_to_breach_display}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono px-3 py-1 rounded-full border bg-slate-950/80 font-semibold uppercase">
+                        State: {riskAssessment.risk_state}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Multi-Factor Risk Score Gauge */}
+                  <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 font-medium">Multi-Factor Capacity Risk Score</span>
+                      <span className="font-mono text-sm font-bold text-white">
+                        {riskAssessment.risk_score} / 100
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${getRiskScoreBarColor(
+                          riskAssessment.risk_score
+                        )}`}
+                        style={{ width: `${Math.min(100, Math.max(5, riskAssessment.risk_score))}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                      <span>0 (NORMAL)</span>
+                      <span>30 (WATCH)</span>
+                      <span>60 (ELEVATED)</span>
+                      <span>80-100 (CRITICAL)</span>
+                    </div>
+                  </div>
+
+                  {/* Threshold Indicators */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                      <div className="text-slate-500 text-[10px]">CURRENT VALUE</div>
+                      <div className="text-base font-bold text-white font-mono mt-0.5">
+                        {riskAssessment.current_value} {riskAssessment.unit}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                      <div className="text-slate-500 text-[10px]">WARNING LIMIT</div>
+                      <div className="text-base font-bold text-yellow-400 font-mono mt-0.5">
+                        {riskAssessment.warning_threshold ?? 80.0} {riskAssessment.unit}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                      <div className="text-slate-500 text-[10px]">CRITICAL LIMIT</div>
+                      <div className="text-base font-bold text-rose-400 font-mono mt-0.5">
+                        {riskAssessment.critical_threshold ?? 90.0} {riskAssessment.unit}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                      <div className="text-slate-500 text-[10px]">CAPACITY LIMIT</div>
+                      <div className="text-base font-bold text-slate-300 font-mono mt-0.5">
+                        {riskAssessment.capacity_limit ?? 100.0} {riskAssessment.unit}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Deterministic Explanation */}
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                    <div className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-cyan-400" />
+                      Engineering Assessment Rationale
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed font-mono">
+                      {riskAssessment.explanation}
+                    </p>
+                    <div className="pt-2 text-[10px] text-slate-500 flex items-center justify-between">
+                      <span>Evaluated: {new Date(riskAssessment.assessed_at).toLocaleTimeString()}</span>
+                      <span>Confidence: {riskAssessment.confidence.toUpperCase()}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8 rounded-xl bg-slate-950/40 border border-dashed border-slate-800 text-center space-y-3">
+                  <Gauge className="h-8 w-8 text-slate-600 mx-auto" />
+                  <div className="text-xs text-slate-400">
+                    No risk evaluation performed yet for this metric.
+                  </div>
+                  <button
+                    onClick={handleAssessRisk}
+                    disabled={assessingRisk || !selectedMetricId}
+                    className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
+                  >
+                    Run Capacity Risk Evaluation Now &rarr;
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Top At-Risk Metrics Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-rose-400" />
+                  Top Risk Infrastructure
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">SORTED BY SCORE</span>
+              </div>
+
+              {riskOverview && riskOverview.highest_risk_items.length > 0 ? (
+                <div className="space-y-2.5">
+                  {riskOverview.highest_risk_items.slice(0, 6).map((item) => (
+                    <div
+                      key={item.metric_id}
+                      onClick={() => setSelectedMetricId(item.metric_id)}
+                      className={`p-3 rounded-lg border text-xs cursor-pointer hover:border-slate-600 transition space-y-1.5 ${
+                        item.metric_id === selectedMetricId
+                          ? "bg-slate-800/80 border-cyan-500/80"
+                          : "bg-slate-950/60 border-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white">
+                          {item.service_name} • {item.metric_name}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${getRiskBadgeClasses(
+                            item.risk_state
+                          )}`}
+                        >
+                          {item.risk_state}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                        <span>Current: {item.current_value} {item.unit}</span>
+                        <span className="text-slate-300 font-semibold">{item.time_to_breach_display}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-slate-500">
+                  No risk intelligence data recorded yet. Ingest telemetry and evaluate capacity risks.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
 
         {/* Phase 3: Interactive Predictive Forecast & Anomaly Explorer */}
         <section id="forecast-explorer" className="space-y-6">
@@ -752,7 +1093,7 @@ export default function Home() {
               <Zap className="h-4 w-4 text-cyan-400" />
               Roadmap Status
             </h3>
-            <span className="text-xs text-slate-400">Phase 3 Verification</span>
+            <span className="text-xs text-slate-400">Phase 4 Verification</span>
           </div>
 
           <div className="space-y-2.5">
@@ -786,10 +1127,20 @@ export default function Home() {
               </span>
             </div>
 
+            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
+              <span className="flex items-center gap-2 text-emerald-300 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
+              </span>
+              <span className="font-mono text-emerald-400 uppercase font-semibold">
+                Completed
+              </span>
+            </div>
+
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
               <span className="flex items-center gap-2 text-cyan-300 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
+                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
               </span>
               <span className="font-mono text-cyan-400 uppercase font-semibold">
                 Verifying
@@ -799,7 +1150,7 @@ export default function Home() {
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
               <span className="flex items-center gap-2 text-slate-400">
                 <span className="h-2 w-2 rounded-full bg-slate-600"></span>
-                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
+                Phase 5 — Operational Context (Runbooks, Incidents & Correlated Logs)
               </span>
               <span className="font-mono text-slate-500 uppercase">
                 Queued

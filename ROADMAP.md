@@ -78,14 +78,15 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 ---
 
 ### Phase 4 — Risk Intelligence
-**Status:** ⬜ Not Started  
+**Status:** ✅ COMPLETED  
 **Objective:** Calculate capacity risk scores, evaluate threshold breaches, estimate time-to-breach, and determine operational states.  
 **Deliverables:**
-- [ ] Configurable threshold engine (Warning and Critical limits per metric).
-- [ ] Capacity breach trajectory analysis.
-- [ ] Time-to-breach calculation with statistical confidence gating.
-- [ ] Multi-factor risk scoring engine assigning states (`NORMAL`, `WATCH`, `ELEVATED`, `CRITICAL`, `INSUFFICIENT_DATA`).
-- [ ] Risk assessment APIs and historical risk audit logging.  
+- [x] Configurable threshold engine (Warning, Critical, and Hard Capacity limits per metric).
+- [x] Capacity breach trajectory analysis matching forecasts against defined limits.
+- [x] Deterministic time-to-breach linear interpolation calculation with uncertainty bounds gating.
+- [x] Multi-factor risk scoring engine assigning continuous 0-100 scores and operational states (`NORMAL`, `WATCH`, `ELEVATED`, `CRITICAL`, `INSUFFICIENT_DATA`).
+- [x] Risk assessment APIs (`/api/v1/risk/assess`, `/api/v1/risk/latest/{id}`, `/api/v1/risk/overview`) and database persistence (`risk_assessments` table).
+- [x] Frontend Capacity Risk Intelligence Hub with infrastructure risk counters, top-risk list, score gauge, and breach clock.  
 **Acceptance Criteria:** System accurately classifies risk states and predicts time-to-breach when trends reliably point toward threshold violation.
 
 ---
