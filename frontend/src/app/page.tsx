@@ -16,7 +16,9 @@ import {
   Play,
   RefreshCw,
   Server,
+  ShieldAlert,
   ShieldCheck,
+  TrendingUp,
   Upload,
   Zap,
 } from "lucide-react";
@@ -25,10 +27,16 @@ import {
   HealthResponse,
   fetchServices,
   ServiceItem,
+  MetricDefinition,
+  fetchMetricsForService,
   generateSyntheticTelemetry,
   uploadCSVTelemetry,
   SyntheticGeneratorRequest,
   CSVImportSummary,
+  generateForecast,
+  ForecastResponse,
+  detectAnomalies,
+  AnomalyDetectionResponse,
 } from "@/lib/api";
 
 export default function Home() {
@@ -38,19 +46,32 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<string>("");
 
-  // Telemetry Pipeline State
+  // Services & Metrics
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loadingServices, setLoadingServices] = useState<boolean>(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [selectedMetricId, setSelectedMetricId] = useState<number | null>(null);
+
+  // Synthetic Generator & CSV Upload
   const [generating, setGenerating] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
   const [genSuccess, setGenSuccess] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<CSVImportSummary | null>(null);
-
-  // Synthetic Generator Form
   const [scenario, setScenario] = useState<string>("memory_leak");
   const [serviceName, setServiceName] = useState<string>("api-service");
   const [duration, setDuration] = useState<number>(120);
   const [seed, setSeed] = useState<number>(42);
+
+  // Phase 3: Forecast & Anomaly State
+  const [horizonMinutes, setHorizonMinutes] = useState<number>(30);
+  const [forecastModel, setForecastModel] = useState<string>("exponential_smoothing");
+  const [forecasting, setForecasting] = useState<boolean>(false);
+  const [forecastResult, setForecastResult] = useState<ForecastResponse | null>(null);
+
+  const [anomalyModel, setAnomalyModel] = useState<string>("statistical_zscore");
+  const [detectingAnomalies, setDetectingAnomalies] = useState<boolean>(false);
+  const [anomalyResult, setAnomalyResult] = useState<AnomalyDetectionResponse | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,11 +96,25 @@ export default function Home() {
     try {
       const data = await fetchServices();
       setServices(data);
+      if (data.length > 0 && !selectedServiceId) {
+        setSelectedServiceId(data[0].id);
+      }
     } catch {
-      // Backend may be offline or no services registered yet
+      // Backend may be offline
     }
     setLoadingServices(false);
   };
+
+  useEffect(() => {
+    if (selectedServiceId) {
+      fetchMetricsForService(selectedServiceId)
+        .then((m) => {
+          setMetrics(m);
+          if (m.length > 0) setSelectedMetricId(m[0].id);
+        })
+        .catch(() => {});
+    }
+  }, [selectedServiceId]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +156,42 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleForecast = async () => {
+    if (!selectedMetricId) return;
+    setForecasting(true);
+    setError(null);
+    try {
+      const res = await generateForecast({
+        metric_id: selectedMetricId,
+        horizon_minutes: Number(horizonMinutes),
+        model_type: forecastModel,
+        confidence_level: 0.95,
+      });
+      setForecastResult(res);
+    } catch (err: any) {
+      setError(err.message || "Forecasting failed");
+    }
+    setForecasting(false);
+  };
+
+  const handleDetectAnomalies = async () => {
+    if (!selectedMetricId) return;
+    setDetectingAnomalies(true);
+    setError(null);
+    try {
+      const res = await detectAnomalies({
+        metric_id: selectedMetricId,
+        model_type: anomalyModel,
+        lookback_minutes: 120,
+        sensitivity: 2.5,
+      });
+      setAnomalyResult(res);
+    } catch (err: any) {
+      setError(err.message || "Anomaly detection failed");
+    }
+    setDetectingAnomalies(false);
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -138,7 +209,7 @@ export default function Home() {
               <span className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
                 Prognosys<span className="text-cyan-400">AI</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono">
-                  v0.2.0-pipeline
+                  v0.3.0-predictive
                 </span>
               </span>
             </div>
@@ -205,48 +276,308 @@ export default function Home() {
 
           <div className="relative z-10 max-w-3xl space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-medium text-cyan-300">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Phase 2: Telemetry Ingestion Pipeline
+              <TrendingUp className="h-3.5 w-3.5" />
+              Phase 3: Multi-Horizon Forecasting & Anomaly Engine
             </div>
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Ingest, Validate & Store{" "}
+              Predict What May Happen Next{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-                High-Fidelity Telemetry.
+                With Mathematical Rigor.
               </span>
             </h1>
             <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-              Every prediction starts with genuine, structured telemetry. PrognosysAI
-              ingests multi-metric infrastructure feeds via deterministic synthetic
-              simulators, strict CSV validators, and high-throughput REST APIs.
+              Generate genuine 15, 30, and 60-minute time-series projections with
+              calibrated prediction intervals. Zero LLM number fabrication. Compare
+              persistence baselines against statistical exponential smoothing and
+              unsupervised Isolation Forests.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <a
-                href="#telemetry-console"
+                href="#forecast-explorer"
                 className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition"
               >
-                <Play className="h-4 w-4" />
-                Launch Telemetry Simulator
+                <TrendingUp className="h-4 w-4" />
+                Open Forecast Explorer
               </a>
-              <button
-                onClick={loadData}
-                disabled={loading}
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition disabled:opacity-50"
+              <a
+                href="#telemetry-console"
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition"
               >
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                Refresh Pipeline
-              </button>
+                Ingest Telemetry First
+                <ArrowRight className="h-4 w-4" />
+              </a>
             </div>
           </div>
         </div>
 
-        {/* Phase 2 Telemetry Ingestion Console */}
+        {/* Phase 3: Interactive Predictive Forecast & Anomaly Explorer */}
+        <section id="forecast-explorer" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
+                <LineChart className="h-5 w-5 text-cyan-400" />
+                Predictive Forecasting & Anomaly Lab
+              </h2>
+              <p className="text-xs text-slate-400">
+                Execute mathematical forecasts and detect structural behavioral drift
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-6">
+            {/* Control Bar: Service, Metric, Horizon, Model selection */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-6 border-b border-slate-800">
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400 font-medium">Select Service</label>
+                <select
+                  value={selectedServiceId || ""}
+                  onChange={(e) => setSelectedServiceId(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                >
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.tier})
+                    </option>
+                  ))}
+                  {services.length === 0 && <option value="">No services registered</option>}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400 font-medium">Select Metric</label>
+                <select
+                  value={selectedMetricId || ""}
+                  onChange={(e) => setSelectedMetricId(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                >
+                  {metrics.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.unit})
+                    </option>
+                  ))}
+                  {metrics.length === 0 && <option value="">No metrics found</option>}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400 font-medium">Forecast Horizon</label>
+                <select
+                  value={horizonMinutes}
+                  onChange={(e) => setHorizonMinutes(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                >
+                  <option value={15}>15 Minutes Horizon</option>
+                  <option value={30}>30 Minutes Horizon</option>
+                  <option value={60}>60 Minutes Horizon</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs text-slate-400 font-medium">Forecasting Model</label>
+                <select
+                  value={forecastModel}
+                  onChange={(e) => setForecastModel(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                >
+                  <option value="exponential_smoothing">Exponential Smoothing (Holt Linear)</option>
+                  <option value="persistence">Persistence Baseline (Naive)</option>
+                  <option value="linear_trend">Linear Trend Regression (OLS)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                onClick={handleForecast}
+                disabled={forecasting || !selectedMetricId}
+                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition disabled:opacity-50 text-xs"
+              >
+                <TrendingUp className={`h-4 w-4 ${forecasting ? "animate-spin" : ""}`} />
+                {forecasting ? "Computing Forecast..." : `Compute ${horizonMinutes}m Forecast`}
+              </button>
+
+              <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+                <select
+                  value={anomalyModel}
+                  onChange={(e) => setAnomalyModel(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none"
+                >
+                  <option value="statistical_zscore">Statistical Z-Score (Rolling)</option>
+                  <option value="isolation_forest">Isolation Forest (Unsupervised)</option>
+                </select>
+
+                <button
+                  onClick={handleDetectAnomalies}
+                  disabled={detectingAnomalies || !selectedMetricId}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs"
+                >
+                  <ShieldAlert className={`h-4 w-4 ${detectingAnomalies ? "animate-spin" : ""}`} />
+                  {detectingAnomalies ? "Detecting..." : "Run Anomaly Detection"}
+                </button>
+              </div>
+            </div>
+
+            {/* Forecast Output Visualization / Cards */}
+            {forecastResult && (
+              <div className="space-y-4 pt-4 border-t border-slate-800">
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-white text-sm flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-cyan-400" />
+                      Model Forecast: {forecastResult.service_name} • {forecastResult.metric_name}
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
+                      {forecastResult.model_name.toUpperCase()} (v{forecastResult.model_version})
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed font-mono">
+                    {forecastResult.summary}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                    <div className="text-xs text-slate-400">Current Observed Level</div>
+                    <div className="text-2xl font-bold text-white font-mono mt-1">
+                      {forecastResult.historical_points.length > 0
+                        ? `${forecastResult.historical_points[forecastResult.historical_points.length - 1].value} ${forecastResult.unit}`
+                        : "—"}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      Based on {forecastResult.training_points_count} training points
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                    <div className="text-xs text-slate-400">
+                      Forecast at +{forecastResult.horizon_minutes}m
+                    </div>
+                    <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">
+                      {forecastResult.points[forecastResult.points.length - 1].predicted_value}{" "}
+                      {forecastResult.unit}
+                    </div>
+                    <div className="text-[10px] text-cyan-500/80 mt-1">
+                      Delta:{" "}
+                      {forecastResult.historical_points.length > 0
+                        ? (
+                            forecastResult.points[forecastResult.points.length - 1].predicted_value -
+                            forecastResult.historical_points[forecastResult.historical_points.length - 1].value
+                          ).toFixed(2)
+                        : "0"}{" "}
+                      {forecastResult.unit}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                    <div className="text-xs text-slate-400">95% Uncertainty Interval</div>
+                    <div className="text-2xl font-bold text-indigo-400 font-mono mt-1">
+                      [{forecastResult.points[forecastResult.points.length - 1].lower_bound},{" "}
+                      {forecastResult.points[forecastResult.points.length - 1].upper_bound}]
+                    </div>
+                    <div className="text-[10px] text-indigo-400/80 mt-1">
+                      Statistical confidence interval
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trajectory Table Sample */}
+                <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
+                  <div className="p-3 bg-slate-950/80 border-b border-slate-800 text-xs font-semibold text-slate-300">
+                    Projected Time-Series Trajectory Sample
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 border-b border-slate-800/80 text-slate-400 font-mono text-[11px]">
+                        <tr>
+                          <th className="p-3">Target Time</th>
+                          <th className="p-3">Predicted Value</th>
+                          <th className="p-3">Lower Bound (95%)</th>
+                          <th className="p-3">Upper Bound (95%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300 font-mono text-[11px]">
+                        {forecastResult.points.slice(0, 10).map((pt, i) => (
+                          <tr key={i} className="hover:bg-slate-800/20">
+                            <td className="p-3 text-slate-400">
+                              {new Date(pt.target_timestamp).toLocaleTimeString()}
+                            </td>
+                            <td className="p-3 font-semibold text-cyan-300">
+                              {pt.predicted_value} {forecastResult.unit}
+                            </td>
+                            <td className="p-3 text-slate-400">{pt.lower_bound}</td>
+                            <td className="p-3 text-slate-400">{pt.upper_bound}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Anomaly Detection Output */}
+            {anomalyResult && (
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-white text-sm flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-amber-400" />
+                      Anomaly Analysis: {anomalyResult.anomalies_detected_count} Anomalies Detected
+                    </span>
+                    <p className="text-xs text-slate-400 mt-1">{anomalyResult.summary}</p>
+                  </div>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-300">
+                    Model: {anomalyResult.model_name}
+                  </span>
+                </div>
+
+                {anomalyResult.anomalies_detected_count > 0 && (
+                  <div className="space-y-2">
+                    {anomalyResult.detections
+                      .filter((d) => d.is_anomaly)
+                      .slice(0, 5)
+                      .map((anom, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 rounded-lg bg-amber-950/20 border border-amber-800/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                        >
+                          <div className="space-y-1">
+                            <span className="font-semibold text-amber-300 flex items-center gap-2">
+                              <span
+                                className={`h-2 w-2 rounded-full ${
+                                  anom.severity === "critical"
+                                    ? "bg-red-500"
+                                    : anom.severity === "high"
+                                    ? "bg-amber-500"
+                                    : "bg-yellow-500"
+                                }`}
+                              ></span>
+                              {new Date(anom.timestamp).toLocaleTimeString()} • Value:{" "}
+                              {anom.actual_value} (Expected: {anom.expected_value})
+                            </span>
+                            <p className="text-slate-400 text-[11px]">{anom.explanation}</p>
+                          </div>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 uppercase">
+                            Score: {anom.anomaly_score} ({anom.severity})
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Telemetry Generator & Ingestion Section */}
         <section id="telemetry-console" className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
                 <Database className="h-5 w-5 text-cyan-400" />
-                Telemetry Generator & Data Ingestion Console
+                Telemetry Ingestion & Synthetic Scenarios
               </h2>
               <p className="text-xs text-slate-400">
                 Generate reproducible operational scenarios or upload infrastructure CSV telemetry
@@ -356,14 +687,12 @@ export default function Home() {
               </div>
 
               <div className="space-y-3 text-xs text-slate-400">
-                <p>
-                  Upload your historical or operational infrastructure time-series. Required columns:
-                </p>
+                <p>Upload your historical or operational infrastructure time-series. Required columns:</p>
                 <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-300">
                   timestamp, service, metric, value, unit
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Strictly checks percentage bounds [0, 100], ISO 8601 timestamps, duplicate records, and monotonic ordering. Zero silent discards.
+                  Validates percentage bounds [0, 100], ISO 8601 timestamps, duplicate records, and monotonic ordering.
                 </p>
               </div>
 
@@ -416,83 +745,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Monitored Services & Catalog Table */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                <Server className="h-5 w-5 text-cyan-400" />
-                Service Catalog & Active Metrics ({services.length})
-              </h2>
-              <p className="text-xs text-slate-400">
-                Monitored infrastructure services with configured capacity thresholds
-              </p>
-            </div>
-            <button
-              onClick={loadServices}
-              disabled={loadingServices}
-              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 transition"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loadingServices ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-
-          {services.length === 0 ? (
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-8 text-center space-y-3">
-              <Server className="h-8 w-8 text-slate-600 mx-auto" />
-              <div className="text-sm font-semibold text-slate-300">
-                No Services Monitored Yet
-              </div>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Generate a synthetic telemetry scenario above or upload a CSV file to register monitored services and metric definitions.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/40 backdrop-blur-sm">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-mono uppercase text-[11px]">
-                  <tr>
-                    <th className="p-4">Service Name</th>
-                    <th className="p-4">Tier</th>
-                    <th className="p-4">Configured Metrics</th>
-                    <th className="p-4">Created At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                  {services.map((svc) => (
-                    <tr key={svc.id} className="hover:bg-slate-800/30 transition">
-                      <td className="p-4 font-semibold text-white flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-cyan-400"></span>
-                        {svc.name}
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-full font-mono text-[10px] uppercase border ${
-                            svc.tier === "critical"
-                              ? "bg-red-950/70 border-red-800/60 text-red-300"
-                              : "bg-slate-800 border-slate-700 text-slate-300"
-                          }`}
-                        >
-                          {svc.tier}
-                        </span>
-                      </td>
-                      <td className="p-4 font-mono text-[11px] text-slate-400">
-                        {svc.metrics && svc.metrics.length > 0
-                          ? svc.metrics.map((m) => m.name).join(", ")
-                          : "Metrics Ingested"}
-                      </td>
-                      <td className="p-4 font-mono text-slate-500 text-[11px]">
-                        {new Date(svc.created_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
         {/* Roadmap Milestones */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -500,7 +752,7 @@ export default function Home() {
               <Zap className="h-4 w-4 text-cyan-400" />
               Roadmap Status
             </h3>
-            <span className="text-xs text-slate-400">Phase 2 Verification</span>
+            <span className="text-xs text-slate-400">Phase 3 Verification</span>
           </div>
 
           <div className="space-y-2.5">
@@ -524,10 +776,20 @@ export default function Home() {
               </span>
             </div>
 
+            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
+              <span className="flex items-center gap-2 text-emerald-300 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Phase 2 — Telemetry Pipeline (Synthetic Generator & CSV Ingestion)
+              </span>
+              <span className="font-mono text-emerald-400 uppercase font-semibold">
+                Completed
+              </span>
+            </div>
+
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
               <span className="flex items-center gap-2 text-cyan-300 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                Phase 2 — Telemetry Pipeline (Synthetic Generator & CSV Ingestion)
+                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
               </span>
               <span className="font-mono text-cyan-400 uppercase font-semibold">
                 Verifying
@@ -537,7 +799,7 @@ export default function Home() {
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
               <span className="flex items-center gap-2 text-slate-400">
                 <span className="h-2 w-2 rounded-full bg-slate-600"></span>
-                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
+                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
               </span>
               <span className="font-mono text-slate-500 uppercase">
                 Queued

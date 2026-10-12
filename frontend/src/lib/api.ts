@@ -85,6 +85,74 @@ export interface CSVImportSummary {
   status: "success" | "partial_success" | "failed";
 }
 
+// Phase 3: Predictive Engine Schemas
+export interface ForecastPointSchema {
+  target_timestamp: string;
+  predicted_value: number;
+  lower_bound: number;
+  upper_bound: number;
+  confidence_level: number;
+}
+
+export interface HistoricalPointSchema {
+  timestamp: string;
+  value: number;
+}
+
+export interface ForecastRequest {
+  metric_id: number;
+  horizon_minutes: number;
+  model_type: string;
+  confidence_level?: number;
+}
+
+export interface ForecastResponse {
+  run_id: number;
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  unit: string;
+  model_name: string;
+  model_version: string;
+  horizon_minutes: number;
+  training_points_count: number;
+  generated_at: string;
+  points: ForecastPointSchema[];
+  historical_points: HistoricalPointSchema[];
+  summary: string;
+}
+
+export interface AnomalyDetectionRequest {
+  metric_id: number;
+  model_type: string;
+  lookback_minutes?: number;
+  sensitivity?: number;
+}
+
+export interface AnomalyDetectionItem {
+  id?: number | null;
+  timestamp: string;
+  actual_value: number;
+  expected_value?: number | null;
+  anomaly_score: number;
+  is_anomaly: boolean;
+  severity: string;
+  explanation?: string | null;
+}
+
+export interface AnomalyDetectionResponse {
+  metric_id: number;
+  service_name: string;
+  metric_name: string;
+  model_name: string;
+  model_version: string;
+  lookback_minutes: number;
+  total_points_analyzed: number;
+  anomalies_detected_count: number;
+  detections: AnomalyDetectionItem[];
+  summary: string;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
 export async function fetchHealthStatus(): Promise<HealthResponse> {
@@ -128,6 +196,14 @@ export async function fetchServiceWithMetrics(serviceId: number): Promise<Servic
   return res.json();
 }
 
+export async function fetchMetricsForService(serviceId: number): Promise<MetricDefinition[]> {
+  const res = await fetch(`${API_BASE_URL}/metrics/?service_id=${serviceId}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch metrics for service #${serviceId}: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function generateSyntheticTelemetry(
   req: SyntheticGeneratorRequest
 ): Promise<SyntheticGeneratorResponse> {
@@ -158,15 +234,37 @@ export async function uploadCSVTelemetry(file: File): Promise<CSVImportSummary> 
   return res.json();
 }
 
-export async function fetchMetricObservations(
-  metricId: number,
-  limit: number = 100
-): Promise<MetricObservation[]> {
-  const res = await fetch(`${API_BASE_URL}/metrics/${metricId}/observations?limit=${limit}`, {
-    cache: "no-store",
+export async function generateForecast(req: ForecastRequest): Promise<ForecastResponse> {
+  const res = await fetch(`${API_BASE_URL}/forecast/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
   });
   if (!res.ok) {
-    throw new Error(`Failed to fetch observations for metric #${metricId}: HTTP ${res.status}`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Forecast generation failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchLatestForecast(metricId: number): Promise<ForecastResponse | null> {
+  const res = await fetch(`${API_BASE_URL}/forecast/latest/${metricId}`, { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to fetch latest forecast: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function detectAnomalies(req: AnomalyDetectionRequest): Promise<AnomalyDetectionResponse> {
+  const res = await fetch(`${API_BASE_URL}/anomalies/detect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Anomaly detection failed: HTTP ${res.status}`);
   }
   return res.json();
 }

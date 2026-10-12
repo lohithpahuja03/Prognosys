@@ -9,7 +9,7 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 - [x] **Phase 0 — Workspace & Architecture** (✅ COMPLETED)
 - [x] **Phase 1 — Working Foundation** (✅ COMPLETED)
 - [x] **Phase 2 — Telemetry Pipeline** (✅ COMPLETED)
-- [ ] **Phase 3 — Predictive Engine** (⬜ Not Started)
+- [x] **Phase 3 — Predictive Engine** (✅ COMPLETED)
 - [ ] **Phase 4 — Risk Intelligence** (⬜ Not Started)
 - [ ] **Phase 5 — Operational Context** (⬜ Not Started)
 - [ ] **Phase 6 — Frontend Command Centre** (⬜ Not Started)
@@ -64,15 +64,15 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 ---
 
 ### Phase 3 — Predictive Engine
-**Status:** ⬜ Not Started  
+**Status:** ✅ COMPLETED  
 **Objective:** Implement genuine mathematical and statistical time-series forecasting algorithms and anomaly detection engines.  
 **Deliverables:**
-- [ ] Base forecasting interface and abstract model lifecycle.
-- [ ] Baseline persistence forecasting model ($y_{t+h} = y_t$).
-- [ ] Statistical forecasting models (Exponential Smoothing / Holt-Winters, Linear Trend Regression).
-- [ ] Multi-horizon forecasting support (15 min, 30 min, 60 min).
-- [ ] Anomaly detection engine (Statistical Rolling Z-Score and scikit-learn Isolation Forest).
-- [ ] Forecast and anomaly API endpoints with uncertainty bounds.  
+- [x] Base forecasting interface and abstract model lifecycle.
+- [x] Baseline persistence forecasting model ($y_{t+h} = y_t$) with variance-scaled uncertainty bands.
+- [x] Statistical forecasting models (Exponential Smoothing / Holt-Winters, Linear Trend Regression).
+- [x] Multi-horizon forecasting support (15 min, 30 min, 60 min).
+- [x] Anomaly detection engine (Statistical Rolling Z-Score and scikit-learn Isolation Forest).
+- [x] Forecast and anomaly API endpoints with uncertainty bounds and database persistence.  
 **Acceptance Criteria:** User selects a service, metric, and forecast horizon to receive genuine model predictions and anomaly scores with zero LLM fabrication.
 
 ---
