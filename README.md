@@ -293,10 +293,10 @@ npm test
 
 ## 20. Current Limitations & Project Status
 
-- **Current Stage:** Phase 0 (Workspace & Architecture), Phase 1 (Working Foundation), Phase 2 (Telemetry Pipeline), Phase 3 (Predictive Engine), and Phase 4 (Capacity Risk Intelligence) complete.
+- **Current Stage:** Phases 0 through 5 (Workspace & Architecture, Working Foundation, Telemetry Pipeline, Predictive Engine, Capacity Risk Intelligence, and Operational Context & Topology) complete.
 - **Runtime Foundations:** 
   - FastAPI backend operational with layered architecture (`core`, `api/v1`, `models`, `schemas`, `services`), CORS middleware, and dynamic health probes (`/api/v1/health`).
-  - Database connectivity active via SQLAlchemy 2.0 with PostgreSQL production readiness and automatic SQLite local development fallback. Initial schema, telemetry, predictive engine, and risk assessment migrations executed via Alembic.
+  - Database connectivity active via SQLAlchemy 2.0 with PostgreSQL production readiness and automatic SQLite local development fallback. Initial schema, telemetry, predictive engine, risk assessment, and operational context migrations executed via Alembic.
   - Next.js 16+ App Router frontend operational with TypeScript, Tailwind CSS, Lucide icons, and real-time backend contract verification.
 - **Telemetry Pipeline Active:**
   - Relational time-series tables (`services`, `metric_definitions`, `metric_observations`) with compound indexing.
@@ -309,7 +309,11 @@ npm test
   - Multi-factor capacity risk score ($0.0 - 100.0$) and operational states (`NORMAL`, `WATCH`, `ELEVATED`, `CRITICAL`, `INSUFFICIENT_DATA`).
   - Deterministic time-to-breach linear interpolation projection against warning and critical thresholds.
   - System-wide risk aggregation endpoint (`/api/v1/risk/overview`) and frontend Risk Intelligence Hub with breach countdown clock and top at-risk infrastructure listing.
-- **Implementation in Progress:** Operational context integration (events, deployments, runbooks, logs) scheduled for Phase 5. Refer to [ROADMAP.md](ROADMAP.md) for milestone tracking.
+- **Operational Context Active:**
+  - Operational event tracking (deployments, config changes, restarts, incidents).
+  - Temporal event correlation engine mapping events to metric inflection points with relevance lead scoring.
+  - Directed service dependency topology mapping with real-time risk states.
+- **Implementation in Progress:** AI Investigator & What-If Simulator scheduled for Phase 6/7. Refer to [ROADMAP.md](ROADMAP.md) for milestone tracking.
 
 ---
 

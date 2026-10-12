@@ -348,3 +348,120 @@ export async function fetchSystemRiskOverview(): Promise<SystemRiskOverview> {
   }
   return res.json();
 }
+
+// Phase 5: Operational Context & Topology Schemas
+export interface OperationalEventCreate {
+  service_id?: number | null;
+  event_type: string;
+  title: string;
+  description?: string;
+  severity?: string;
+  metadata_json?: string;
+  occurred_at?: string;
+}
+
+export interface OperationalEventResponse {
+  id: number;
+  service_id?: number | null;
+  service_name?: string | null;
+  event_type: string;
+  title: string;
+  description?: string | null;
+  severity: string;
+  metadata_json?: string | null;
+  occurred_at: string;
+  created_at: string;
+}
+
+export interface TopologyNode {
+  id: number;
+  name: string;
+  slug: string;
+  tier: string;
+  risk_state: string;
+}
+
+export interface TopologyEdge {
+  id: number;
+  source: number;
+  target: number;
+  dependency_type: string;
+}
+
+export interface ServiceTopologyResponse {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+}
+
+export interface CorrelatedEventItem {
+  event_id: number;
+  event_type: string;
+  title: string;
+  occurred_at: string;
+  minutes_before_inflection: number;
+  relevance_lead_score: number;
+  relevance_note: string;
+}
+
+export interface EventCorrelationResponse {
+  metric_id: number;
+  metric_name: string;
+  service_name: string;
+  reference_timestamp: string;
+  lookback_minutes: number;
+  total_events_in_window: number;
+  correlated_events: CorrelatedEventItem[];
+  methodology_disclaimer: string;
+}
+
+export async function createOperationalEvent(
+  req: OperationalEventCreate
+): Promise<OperationalEventResponse> {
+  const res = await fetch(`${API_BASE_URL}/events/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to log event: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchOperationalEvents(
+  serviceId?: number,
+  eventType?: string
+): Promise<OperationalEventResponse[]> {
+  const params = new URLSearchParams();
+  if (serviceId) params.append("service_id", serviceId.toString());
+  if (eventType) params.append("event_type", eventType);
+
+  const res = await fetch(`${API_BASE_URL}/events/?${params.toString()}`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch events: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchEventCorrelation(
+  metricId: number,
+  lookbackMinutes = 120
+): Promise<EventCorrelationResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/events/correlate/${metricId}?lookback_minutes=${lookbackMinutes}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to correlate events: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchServiceTopology(): Promise<ServiceTopologyResponse> {
+  const res = await fetch(`${API_BASE_URL}/topology/`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch service topology: HTTP ${res.status}`);
+  }
+  return res.json();
+}

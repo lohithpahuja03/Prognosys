@@ -92,13 +92,14 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 ---
 
 ### Phase 5 — Operational Context
-**Status:** ⬜ Not Started  
+**Status:** ✅ COMPLETED  
 **Objective:** Integrate operational events (deployments, config updates, incidents) with telemetry and map basic service dependencies.  
 **Deliverables:**
-- [ ] Operational event persistence and API ingestion.
-- [ ] Temporal correlation engine aligning metric anomalies and risk state changes with operational events.
-- [ ] Evidence-based correlation builder respecting the principle that correlation is not causation.
-- [ ] Service dependency topology model (e.g., Web App -> API -> DB / Queue -> Worker).  
+- [x] Operational event persistence and API ingestion (`operational_events` table and REST endpoints).
+- [x] Temporal correlation engine aligning metric anomalies and risk state changes with operational events.
+- [x] Evidence-based correlation builder respecting the principle that correlation is not causation.
+- [x] Service dependency topology model (directed links between services with live risk state aggregation).
+- [x] Frontend Operational Context & Topology viewer with interactive event logging and temporal lead scoring.  
 **Acceptance Criteria:** Telemetry trends, forecast warnings, and deployment/operational events are displayed together in a unified chronological view.
 
 ---

@@ -23,6 +23,10 @@ import {
   TrendingUp,
   Upload,
   Zap,
+  GitCommit,
+  Network,
+  History,
+  Sparkles,
 } from "lucide-react";
 import {
   checkBackendConnection,
@@ -44,6 +48,13 @@ import {
   fetchSystemRiskOverview,
   RiskAssessmentResponse,
   SystemRiskOverview,
+  createOperationalEvent,
+  fetchOperationalEvents,
+  fetchEventCorrelation,
+  fetchServiceTopology,
+  OperationalEventResponse,
+  EventCorrelationResponse,
+  ServiceTopologyResponse,
 } from "@/lib/api";
 
 export default function Home() {
@@ -86,6 +97,16 @@ export default function Home() {
   const [riskAssessment, setRiskAssessment] = useState<RiskAssessmentResponse | null>(null);
   const [assessingRisk, setAssessingRisk] = useState<boolean>(false);
 
+  // Phase 5: Operational Context State
+  const [events, setEvents] = useState<OperationalEventResponse[]>([]);
+  const [correlatedEvents, setCorrelatedEvents] = useState<EventCorrelationResponse | null>(null);
+  const [topology, setTopology] = useState<ServiceTopologyResponse | null>(null);
+  const [eventTitle, setEventTitle] = useState<string>("Release v2.14.0 canary rollout");
+  const [eventType, setEventType] = useState<string>("deployment");
+  const [eventSeverity, setEventSeverity] = useState<string>("info");
+  const [loggingEvent, setLoggingEvent] = useState<boolean>(false);
+  const [eventSuccess, setEventSuccess] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
@@ -98,6 +119,8 @@ export default function Home() {
       setLastChecked(new Date().toLocaleTimeString());
       loadServices();
       loadRiskOverviewData();
+      loadEventsData();
+      loadTopologyData();
     } else {
       setError(result.error || "Unable to reach FastAPI backend");
       setHealth(null);
@@ -130,6 +153,53 @@ export default function Home() {
     setLoadingRiskOverview(false);
   };
 
+  const loadEventsData = async () => {
+    try {
+      const data = await fetchOperationalEvents();
+      setEvents(data);
+    } catch {
+      // Backend may be offline
+    }
+  };
+
+  const loadTopologyData = async () => {
+    try {
+      const topo = await fetchServiceTopology();
+      setTopology(topo);
+    } catch {
+      // Backend may be offline
+    }
+  };
+
+  const loadCorrelationData = async (metricId: number) => {
+    try {
+      const corr = await fetchEventCorrelation(metricId);
+      setCorrelatedEvents(corr);
+    } catch {
+      setCorrelatedEvents(null);
+    }
+  };
+
+  const handleLogEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoggingEvent(true);
+    setEventSuccess(null);
+    try {
+      await createOperationalEvent({
+        service_id: selectedServiceId,
+        event_type: eventType,
+        title: eventTitle,
+        severity: eventSeverity,
+      });
+      setEventSuccess(`Logged ${eventType}: "${eventTitle}"`);
+      loadEventsData();
+      if (selectedMetricId) loadCorrelationData(selectedMetricId);
+    } catch (err: any) {
+      setError(err.message || "Failed to log event");
+    }
+    setLoggingEvent(false);
+  };
+
   useEffect(() => {
     if (selectedServiceId) {
       fetchMetricsForService(selectedServiceId)
@@ -148,6 +218,7 @@ export default function Home() {
           setRiskAssessment(latest);
         })
         .catch(() => {});
+      loadCorrelationData(selectedMetricId);
     }
   }, [selectedMetricId]);
 
@@ -652,6 +723,261 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Phase 5: Operational Context & Service Topology */}
+        <section id="operational-context" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
+                <GitCommit className="h-5 w-5 text-indigo-400" />
+                Operational Context & Service Topology
+              </h2>
+              <p className="text-xs text-slate-400">
+                Correlate software deployments and infrastructure events with metric inflection points.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-800 text-indigo-300">
+                Phase 5 Active
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: Event Logger & Live Event Timeline */}
+            <div className="space-y-6">
+              {/* Event Logger Form */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-sm font-semibold text-white flex items-center gap-2">
+                    <History className="h-4 w-4 text-indigo-400" />
+                    Log Operational Event
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">TEMPORAL CONTEXT</span>
+                </div>
+
+                <form onSubmit={handleLogEvent} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Event Title</label>
+                    <input
+                      type="text"
+                      value={eventTitle}
+                      onChange={(e) => setEventTitle(e.target.value)}
+                      placeholder="e.g. Release v2.14.0 canary rollout"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-400 font-medium">Event Type</label>
+                      <select
+                        value={eventType}
+                        onChange={(e) => setEventType(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="deployment">Deployment</option>
+                        <option value="config_change">Configuration Change</option>
+                        <option value="restart">Service Restart</option>
+                        <option value="scale_event">Autoscaling Event</option>
+                        <option value="incident">Incident / Outage</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-400 font-medium">Severity</label>
+                      <select
+                        value={eventSeverity}
+                        onChange={(e) => setEventSeverity(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      >
+                        <option value="info">Info</option>
+                        <option value="warning">Warning</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loggingEvent}
+                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs shadow-lg shadow-indigo-600/20"
+                  >
+                    <GitCommit className={`h-3.5 w-3.5 ${loggingEvent ? "animate-spin" : ""}`} />
+                    {loggingEvent ? "Logging Event..." : "Record Operational Event"}
+                  </button>
+                </form>
+
+                {eventSuccess && (
+                  <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 flex items-center gap-2 text-emerald-300 text-xs">
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                    <span>{eventSuccess}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Events Feed */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-sm font-semibold text-white flex items-center gap-2">
+                    <History className="h-4 w-4 text-slate-400" />
+                    Recent Operational Timeline
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">{events.length} EVENTS</span>
+                </div>
+
+                {events.length > 0 ? (
+                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                    {events.slice(0, 5).map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-white flex items-center gap-2">
+                            <span
+                              className={`h-2 w-2 rounded-full ${
+                                ev.severity === "critical"
+                                  ? "bg-rose-500"
+                                  : ev.severity === "warning"
+                                  ? "bg-amber-500"
+                                  : "bg-indigo-400"
+                              }`}
+                            />
+                            {ev.title}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400 uppercase">
+                            {ev.event_type}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span>Target: {ev.service_name || "Infrastructure-Wide"}</span>
+                          <span>{new Date(ev.occurred_at).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    No operational events logged yet. Record an event to observe temporal correlation.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Temporal Correlation Lead & Topology Graph */}
+            <div className="space-y-6">
+              {/* Temporal Correlation Card */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-cyan-400" />
+                    Temporal Metric Correlation
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    LOOKBACK: 120 MINS
+                  </span>
+                </div>
+
+                {/* Methodological Disclaimer */}
+                <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-800/40 text-[11px] text-indigo-300 leading-relaxed font-mono">
+                  {correlatedEvents?.methodology_disclaimer ||
+                    "Temporal proximity detects investigative leads, never assumed causation."}
+                </div>
+
+                {correlatedEvents && correlatedEvents.correlated_events.length > 0 ? (
+                  <div className="space-y-2.5 max-h-56 overflow-y-auto">
+                    {correlatedEvents.correlated_events.map((c) => (
+                      <div
+                        key={c.event_id}
+                        className="p-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-white">{c.title}</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
+                            Lead Score: {c.relevance_lead_score}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono">
+                          {c.relevance_note}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    No operational events detected within the 120-minute window of the selected metric.
+                  </div>
+                )}
+              </div>
+
+              {/* Service Dependency Topology */}
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <span className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Network className="h-4 w-4 text-emerald-400" />
+                    Service Dependency Topology
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    {topology?.nodes.length ?? 0} NODES • {topology?.edges.length ?? 0} EDGES
+                  </span>
+                </div>
+
+                {topology && topology.nodes.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {topology.nodes.map((n) => (
+                        <div
+                          key={n.id}
+                          className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs space-y-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-white truncate">{n.name}</span>
+                            <span
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${getRiskBadgeClasses(
+                                n.risk_state
+                              )}`}
+                            >
+                              {n.risk_state}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">Tier: {n.tier}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {topology.edges.length > 0 && (
+                      <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                        <span className="text-[10px] text-slate-500 font-mono uppercase">
+                          Directed Downstream Links:
+                        </span>
+                        <div className="space-y-1 font-mono text-[11px]">
+                          {topology.edges.map((e) => {
+                            const srcNode = topology.nodes.find((x) => x.id === e.source)?.name || e.source;
+                            const tgtNode = topology.nodes.find((x) => x.id === e.target)?.name || e.target;
+                            return (
+                              <div key={e.id} className="flex items-center gap-1.5 text-slate-300">
+                                <span>{srcNode}</span>
+                                <span className="text-cyan-400">&rarr;</span>
+                                <span>{tgtNode}</span>
+                                <span className="text-slate-500 text-[10px]">({e.dependency_type})</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    Register services to construct upstream/downstream dependency map.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Phase 3: Interactive Predictive Forecast & Anomaly Explorer */}
         <section id="forecast-explorer" className="space-y-6">
           <div className="flex items-center justify-between">
@@ -1137,23 +1463,33 @@ export default function Home() {
               </span>
             </div>
 
+            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
+              <span className="flex items-center gap-2 text-emerald-300 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
+              </span>
+              <span className="font-mono text-emerald-400 uppercase font-semibold">
+                Completed
+              </span>
+            </div>
+
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
               <span className="flex items-center gap-2 text-cyan-300 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                Phase 4 — Risk Intelligence (Thresholds, Breach & Time-to-Breach)
+                Phase 5 — Operational Context & Topology (Events & Correlations)
               </span>
               <span className="font-mono text-cyan-400 uppercase font-semibold">
-                Verifying
+                Completed
               </span>
             </div>
 
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
               <span className="flex items-center gap-2 text-slate-400">
                 <span className="h-2 w-2 rounded-full bg-slate-600"></span>
-                Phase 5 — Operational Context (Runbooks, Incidents & Correlated Logs)
+                Phase 6 — Incident Investigation & AI Copilot (Evidence Synthesis)
               </span>
               <span className="font-mono text-slate-500 uppercase">
-                Queued
+                Active
               </span>
             </div>
           </div>

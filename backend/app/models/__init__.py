@@ -5,6 +5,7 @@ from app.models.metric import MetricDefinition, MetricObservation
 from app.models.forecast import ForecastRun, ForecastPoint
 from app.models.anomaly import AnomalyDetection
 from app.models.risk import RiskAssessment
+from app.models.context import OperationalEvent, ServiceDependency
 
 __all__ = [
     "BaseModel",
@@ -16,4 +17,6 @@ __all__ = [
     "ForecastPoint",
     "AnomalyDetection",
     "RiskAssessment",
+    "OperationalEvent",
+    "ServiceDependency",
 ]
