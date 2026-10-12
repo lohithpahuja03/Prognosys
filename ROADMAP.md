@@ -8,7 +8,7 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 
 - [x] **Phase 0 — Workspace & Architecture** (✅ COMPLETED)
 - [x] **Phase 1 — Working Foundation** (✅ COMPLETED)
-- [ ] **Phase 2 — Telemetry Pipeline** (⬜ Not Started)
+- [x] **Phase 2 — Telemetry Pipeline** (✅ COMPLETED)
 - [ ] **Phase 3 — Predictive Engine** (⬜ Not Started)
 - [ ] **Phase 4 — Risk Intelligence** (⬜ Not Started)
 - [ ] **Phase 5 — Operational Context** (⬜ Not Started)
@@ -51,14 +51,14 @@ This document outlines the strict phase-by-phase development lifecycle for Progn
 ---
 
 ### Phase 2 — Telemetry Pipeline
-**Status:** ⬜ Not Started  
+**Status:** ✅ COMPLETED  
 **Objective:** Build high-throughput, validated telemetry ingestion supporting synthetic generation, CSV import, and REST API ingestion.  
 **Deliverables:**
-- [ ] Service and metric definition database models with foreign keys and indexes.
-- [ ] Synthetic telemetry generator simulating realistic patterns (CPU spikes, memory leaks, steady load).
-- [ ] Validated CSV telemetry ingestion engine with format, timestamp, and anomaly checks.
-- [ ] REST API endpoints for real-time metric point submission.
-- [ ] Service inventory and metric catalog APIs.  
+- [x] Service and metric definition database models with foreign keys and compound indexes.
+- [x] Synthetic telemetry generator simulating realistic patterns (CPU spikes, memory leaks, steady load, db pressure).
+- [x] Validated CSV telemetry ingestion engine with format, timestamp, bounds, and anomaly checks (zero silent discards).
+- [x] REST API endpoints for real-time metric point submission and querying with filtering.
+- [x] Service inventory and metric catalog APIs.  
 **Acceptance Criteria:** User can generate synthetic telemetry, upload CSV telemetry, persist observations, and query historical time-series data with pagination and filtering.
 
 ---

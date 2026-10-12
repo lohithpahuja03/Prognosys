@@ -1,22 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Cpu,
   Database,
   ExternalLink,
+  FileSpreadsheet,
   Layers,
   LineChart,
+  Play,
   RefreshCw,
   Server,
   ShieldCheck,
+  Upload,
   Zap,
 } from "lucide-react";
-import { checkBackendConnection, HealthResponse } from "@/lib/api";
+import {
+  checkBackendConnection,
+  HealthResponse,
+  fetchServices,
+  ServiceItem,
+  generateSyntheticTelemetry,
+  uploadCSVTelemetry,
+  SyntheticGeneratorRequest,
+  CSVImportSummary,
+} from "@/lib/api";
 
 export default function Home() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -25,7 +38,23 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<string>("");
 
-  const testConnection = async () => {
+  // Telemetry Pipeline State
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [loadingServices, setLoadingServices] = useState<boolean>(false);
+  const [generating, setGenerating] = useState<boolean>(false);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [genSuccess, setGenSuccess] = useState<string | null>(null);
+  const [uploadSummary, setUploadSummary] = useState<CSVImportSummary | null>(null);
+
+  // Synthetic Generator Form
+  const [scenario, setScenario] = useState<string>("memory_leak");
+  const [serviceName, setServiceName] = useState<string>("api-service");
+  const [duration, setDuration] = useState<number>(120);
+  const [seed, setSeed] = useState<number>(42);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     const result = await checkBackendConnection();
@@ -33,6 +62,7 @@ export default function Home() {
     if (result.connected && result.data) {
       setHealth(result.data);
       setLastChecked(new Date().toLocaleTimeString());
+      loadServices();
     } else {
       setError(result.error || "Unable to reach FastAPI backend");
       setHealth(null);
@@ -40,13 +70,64 @@ export default function Home() {
     setLoading(false);
   };
 
+  const loadServices = async () => {
+    setLoadingServices(true);
+    try {
+      const data = await fetchServices();
+      setServices(data);
+    } catch {
+      // Backend may be offline or no services registered yet
+    }
+    setLoadingServices(false);
+  };
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGenerating(true);
+    setGenSuccess(null);
+    try {
+      const req: SyntheticGeneratorRequest = {
+        service_name: serviceName,
+        scenario: scenario,
+        duration_minutes: Number(duration),
+        interval_seconds: 60,
+        seed: Number(seed),
+      };
+      const res = await generateSyntheticTelemetry(req);
+      setGenSuccess(
+        `Generated ${res.observations_created} observations across ${res.metrics_generated.length} metrics for '${res.service_name}'.`
+      );
+      loadServices();
+    } catch (err: any) {
+      setError(err.message || "Failed to generate synthetic telemetry");
+    }
+    setGenerating(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadSummary(null);
+    try {
+      const summary = await uploadCSVTelemetry(file);
+      setUploadSummary(summary);
+      loadServices();
+    } catch (err: any) {
+      setError(err.message || "Failed to upload CSV file");
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   useEffect(() => {
-    testConnection();
+    loadData();
   }, []);
 
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
-      {/* Top Header / Navigation Bar */}
+      {/* Top Navigation */}
       <header className="border-b border-slate-800/80 bg-[#070b14]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -57,14 +138,13 @@ export default function Home() {
               <span className="font-bold text-lg tracking-tight text-white flex items-center gap-2">
                 Prognosys<span className="text-cyan-400">AI</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 font-mono">
-                  v0.1.0-alpha
+                  v0.2.0-pipeline
                 </span>
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Live Backend Connection Indicator */}
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-mono">
               <span className="relative flex h-2 w-2">
                 {health?.status === "healthy" ? (
@@ -126,250 +206,301 @@ export default function Home() {
           <div className="relative z-10 max-w-3xl space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-medium text-cyan-300">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Predictive Infrastructure Intelligence & Capacity Risk
+              Phase 2: Telemetry Ingestion Pipeline
             </div>
             <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              Predict Infrastructure Problems{" "}
+              Ingest, Validate & Store{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-                Before They Become Incidents.
+                High-Fidelity Telemetry.
               </span>
             </h1>
             <p className="text-slate-400 text-base md:text-lg leading-relaxed">
-              Standard monitoring tells you when a threshold is breached. PrognosysAI
-              forecasts multi-horizon trajectories, detects behavioral drift, quantifies
-              time-to-breach risk, and correlates temporal evidence with operational
-              events.
+              Every prediction starts with genuine, structured telemetry. PrognosysAI
+              ingests multi-metric infrastructure feeds via deterministic synthetic
+              simulators, strict CSV validators, and high-throughput REST APIs.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-4">
-              <button
-                onClick={testConnection}
-                disabled={loading}
-                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-                />
-                Probe Backend Health
-              </button>
               <a
-                href="#subsystems"
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition"
+                href="#telemetry-console"
+                className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium px-5 py-2.5 rounded-lg shadow-lg shadow-cyan-500/25 transition"
               >
-                Inspect Subsystems
-                <ArrowRight className="h-4 w-4" />
+                <Play className="h-4 w-4" />
+                Launch Telemetry Simulator
               </a>
+              <button
+                onClick={loadData}
+                disabled={loading}
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 px-5 py-2.5 rounded-lg transition disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Refresh Pipeline
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Phase 1 Verification Status Cards */}
-        <section id="subsystems" className="space-y-4">
+        {/* Phase 2 Telemetry Ingestion Console */}
+        <section id="telemetry-console" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
+                <Database className="h-5 w-5 text-cyan-400" />
+                Telemetry Generator & Data Ingestion Console
+              </h2>
+              <p className="text-xs text-slate-400">
+                Generate reproducible operational scenarios or upload infrastructure CSV telemetry
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Synthetic Telemetry Generator Form */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Play className="h-4 w-4 text-cyan-400" />
+                  <span className="font-semibold text-sm text-white">
+                    Deterministic Scenario Simulator
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-300">
+                  REPRODUCIBLE
+                </span>
+              </div>
+
+              <form onSubmit={handleGenerate} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Target Service</label>
+                    <input
+                      type="text"
+                      value={serviceName}
+                      onChange={(e) => setServiceName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      placeholder="e.g. api-service"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Scenario</label>
+                    <select
+                      value={scenario}
+                      onChange={(e) => setScenario(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                    >
+                      <option value="memory_leak">Memory Leak (Gradual climb to 90%)</option>
+                      <option value="cpu_saturation">CPU Saturation (Surge to 95%)</option>
+                      <option value="traffic_spike">Traffic Spike (4x surge with latency)</option>
+                      <option value="db_pressure">DB Pool Exhaustion</option>
+                      <option value="normal">Normal (Healthy baseline)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Duration (Minutes)</label>
+                    <input
+                      type="number"
+                      value={duration}
+                      min={15}
+                      max={720}
+                      onChange={(e) => setDuration(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-400 font-medium">Random Seed</label>
+                    <input
+                      type="number"
+                      value={seed}
+                      onChange={(e) => setSeed(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={generating}
+                  className="w-full flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2.5 rounded-lg transition disabled:opacity-50 text-xs shadow-lg shadow-cyan-600/20"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${generating ? "animate-spin" : ""}`} />
+                  {generating ? "Generating Telemetry..." : "Generate Telemetry Dataset"}
+                </button>
+              </form>
+
+              {genSuccess && (
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 flex items-center gap-2 text-emerald-300 text-xs">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  <span>{genSuccess}</span>
+                </div>
+              )}
+            </div>
+
+            {/* CSV Telemetry Importer */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-blue-400" />
+                  <span className="font-semibold text-sm text-white">
+                    Validated CSV Telemetry Upload
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-950 border border-blue-800 text-blue-300">
+                  STRICT VALIDATION
+                </span>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-400">
+                <p>
+                  Upload your historical or operational infrastructure time-series. Required columns:
+                </p>
+                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] text-cyan-300">
+                  timestamp, service, metric, value, unit
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Strictly checks percentage bounds [0, 100], ISO 8601 timestamps, duplicate records, and monotonic ordering. Zero silent discards.
+                </p>
+              </div>
+
+              <div>
+                <input
+                  type="file"
+                  accept=".csv"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="csv-file-input"
+                />
+                <label
+                  htmlFor="csv-file-input"
+                  className="cursor-pointer border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center gap-2 bg-slate-950/40 hover:bg-slate-900/50 transition"
+                >
+                  <Upload className={`h-6 w-6 text-slate-400 ${uploading ? "animate-bounce" : ""}`} />
+                  <span className="text-xs font-medium text-slate-300">
+                    {uploading ? "Uploading & Validating..." : "Click to select CSV telemetry file"}
+                  </span>
+                  <span className="text-[10px] text-slate-500">Maximum file size: 10 MB</span>
+                </label>
+              </div>
+
+              {uploadSummary && (
+                <div
+                  className={`p-3.5 rounded-lg border text-xs space-y-1.5 ${
+                    uploadSummary.status === "success"
+                      ? "bg-emerald-950/30 border-emerald-800/50 text-emerald-300"
+                      : uploadSummary.status === "partial_success"
+                      ? "bg-amber-950/30 border-amber-800/50 text-amber-300"
+                      : "bg-red-950/30 border-red-800/50 text-red-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>Import Status: {uploadSummary.status.toUpperCase()}</span>
+                    <span>
+                      {uploadSummary.valid_rows_imported} / {uploadSummary.total_rows_read} rows
+                    </span>
+                  </div>
+                  {uploadSummary.errors.length > 0 && (
+                    <div className="pt-1 text-[11px] opacity-90">
+                      Found {uploadSummary.error_count} validation errors. First error: row{" "}
+                      {uploadSummary.errors[0].row_number} - {uploadSummary.errors[0].message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Monitored Services & Catalog Table */}
+        <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
                 <Server className="h-5 w-5 text-cyan-400" />
-                Phase 1 Runtime Verification & Diagnostics
+                Service Catalog & Active Metrics ({services.length})
               </h2>
               <p className="text-xs text-slate-400">
-                Real-time contract verification between Next.js frontend and FastAPI backend
+                Monitored infrastructure services with configured capacity thresholds
               </p>
             </div>
-            {lastChecked && (
-              <span className="text-xs text-slate-500 font-mono">
-                Updated: {lastChecked}
-              </span>
-            )}
+            <button
+              onClick={loadServices}
+              disabled={loadingServices}
+              className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 transition"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingServices ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Backend Service Card */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 backdrop-blur-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                  <Cpu className="h-4 w-4 text-cyan-400" />
-                  FastAPI Engine
-                </span>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                    health
-                      ? "bg-emerald-950/80 border-emerald-800/60 text-emerald-300"
-                      : "bg-red-950/80 border-red-800/60 text-red-300"
-                  }`}
-                >
-                  {health ? "ONLINE" : "OFFLINE"}
-                </span>
+          {services.length === 0 ? (
+            <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-8 text-center space-y-3">
+              <Server className="h-8 w-8 text-slate-600 mx-auto" />
+              <div className="text-sm font-semibold text-slate-300">
+                No Services Monitored Yet
               </div>
-              <div className="space-y-1">
-                <div className="text-2xl font-bold text-white tracking-tight">
-                  {health?.project || "PrognosysAI"}
-                </div>
-                <div className="text-xs text-slate-400 font-mono">
-                  Version: {health?.version || "Unknown"} | Env:{" "}
-                  {health?.environment || "development"}
-                </div>
-              </div>
-              <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-                <span>API Latency</span>
-                <span className="text-cyan-400 font-mono font-semibold">
-                  {latency > 0 ? `${latency} ms` : "—"}
-                </span>
-              </div>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Generate a synthetic telemetry scenario above or upload a CSV file to register monitored services and metric definitions.
+              </p>
             </div>
-
-            {/* Database Engine Card */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 backdrop-blur-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                  <Database className="h-4 w-4 text-blue-400" />
-                  Persistence Layer
-                </span>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                    health?.database.connected
-                      ? "bg-emerald-950/80 border-emerald-800/60 text-emerald-300"
-                      : "bg-amber-950/80 border-amber-800/60 text-amber-300"
-                  }`}
-                >
-                  {health?.database.connected ? "CONNECTED" : "UNREACHABLE"}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="text-2xl font-bold text-white tracking-tight capitalize">
-                  {health?.database.database_type || "Storage"}
-                </div>
-                <div className="text-xs text-slate-400 font-mono">
-                  State: {health?.database.status || "Pending"} | Alembic Ready
-                </div>
-              </div>
-              <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-                <span>Dialect</span>
-                <span className="text-blue-400 font-mono font-semibold uppercase">
-                  {health?.database.database_type || "SQLAlchemy"}
-                </span>
-              </div>
-            </div>
-
-            {/* Subsystems Status Card */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 backdrop-blur-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-indigo-400" />
-                  Engine Readiness
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-300">
-                  PHASE 1
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="text-2xl font-bold text-white tracking-tight">
-                  {health ? Object.keys(health.components).length : 0} Engines
-                </div>
-                <div className="text-xs text-slate-400 font-mono">
-                  Telemetry, Forecast & Risk Registered
-                </div>
-              </div>
-              <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex justify-between">
-                <span>Core Contracts</span>
-                <span className="text-emerald-400 font-mono font-semibold">
-                  Validated
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Error Banner if Disconnected */}
-          {error && (
-            <div className="p-4 rounded-xl border border-amber-800/60 bg-amber-950/30 flex items-center gap-3 text-amber-300 text-sm">
-              <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-              <div>
-                <span className="font-semibold">Backend offline:</span> Ensure FastAPI is running on port 8000 (
-                <code className="text-xs bg-amber-900/50 px-1 py-0.5 rounded font-mono">
-                  uvicorn app.main:app --reload
-                </code>
-                ). Error: {error}
-              </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/40 backdrop-blur-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-mono uppercase text-[11px]">
+                  <tr>
+                    <th className="p-4">Service Name</th>
+                    <th className="p-4">Tier</th>
+                    <th className="p-4">Configured Metrics</th>
+                    <th className="p-4">Created At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {services.map((svc) => (
+                    <tr key={svc.id} className="hover:bg-slate-800/30 transition">
+                      <td className="p-4 font-semibold text-white flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-cyan-400"></span>
+                        {svc.name}
+                      </td>
+                      <td className="p-4">
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-mono text-[10px] uppercase border ${
+                            svc.tier === "critical"
+                              ? "bg-red-950/70 border-red-800/60 text-red-300"
+                              : "bg-slate-800 border-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {svc.tier}
+                        </span>
+                      </td>
+                      <td className="p-4 font-mono text-[11px] text-slate-400">
+                        {svc.metrics && svc.metrics.length > 0
+                          ? svc.metrics.map((m) => m.name).join(", ")
+                          : "Metrics Ingested"}
+                      </td>
+                      <td className="p-4 font-mono text-slate-500 text-[11px]">
+                        {new Date(svc.created_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </section>
 
-        {/* Predictive Workflow Architecture Overview */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-              <LineChart className="h-5 w-5 text-cyan-400" />
-              The Predictive Intelligence Pipeline
-            </h2>
-            <p className="text-xs text-slate-400">
-              Deterministic telemetry and forecasting workflow enforcing Zero LLM Fabrication
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
-                <span className="w-6 h-6 rounded-full bg-cyan-950 flex items-center justify-center text-xs font-mono border border-cyan-800">
-                  1
-                </span>
-                Telemetry Ingestion
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Ingest synthetic scenarios, validated CSV uploads, or live metrics
-                with strict timestamp and percentage validation.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
-                <span className="w-6 h-6 rounded-full bg-blue-950 flex items-center justify-center text-xs font-mono border border-blue-800">
-                  2
-                </span>
-                Multi-Horizon Forecast
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Genuine time-series models compute 15m, 30m, and 60m projections
-                with uncertainty bands. Zero LLM number fabrication.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-indigo-400 font-semibold text-sm">
-                <span className="w-6 h-6 rounded-full bg-indigo-950 flex items-center justify-center text-xs font-mono border border-indigo-800">
-                  3
-                </span>
-                Risk & Time-to-Breach
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Evaluate trajectory against configured capacity thresholds,
-                classify risk states, and project time-to-breach.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-purple-400 font-semibold text-sm">
-                <span className="w-6 h-6 rounded-full bg-purple-950 flex items-center justify-center text-xs font-mono border border-purple-800">
-                  4
-                </span>
-                Evidence Correlation
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Correlate warnings temporally with deployments and config changes.
-                Correlation is an investigation lead, not proof of causation.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Next Development Phases Tracker */}
+        {/* Roadmap Milestones */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white uppercase tracking-wider font-mono flex items-center gap-2">
               <Zap className="h-4 w-4 text-cyan-400" />
               Roadmap Status
             </h3>
-            <span className="text-xs text-slate-400">
-              Phase 1 Verification Complete
-            </span>
+            <span className="text-xs text-slate-400">Phase 2 Verification</span>
           </div>
 
           <div className="space-y-2.5">
@@ -383,10 +514,20 @@ export default function Home() {
               </span>
             </div>
 
+            <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
+              <span className="flex items-center gap-2 text-emerald-300 font-medium">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Phase 1 — Working Foundation (FastAPI & Next.js)
+              </span>
+              <span className="font-mono text-emerald-400 uppercase font-semibold">
+                Completed
+              </span>
+            </div>
+
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40">
               <span className="flex items-center gap-2 text-cyan-300 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-cyan-400" />
-                Phase 1 — Working Foundation (FastAPI, Next.js, Alembic)
+                Phase 2 — Telemetry Pipeline (Synthetic Generator & CSV Ingestion)
               </span>
               <span className="font-mono text-cyan-400 uppercase font-semibold">
                 Verifying
@@ -396,7 +537,7 @@ export default function Home() {
             <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-900/50 border border-slate-800">
               <span className="flex items-center gap-2 text-slate-400">
                 <span className="h-2 w-2 rounded-full bg-slate-600"></span>
-                Phase 2 — Telemetry Pipeline (Synthetic Generator, CSV Ingestion)
+                Phase 3 — Predictive Engine (Multi-Horizon Forecasting & Anomalies)
               </span>
               <span className="font-mono text-slate-500 uppercase">
                 Queued
